@@ -448,6 +448,7 @@ impl WaylandFrontend {
             surfaces_by_id: HashMap::new(),
             next_surface_id: 1,
             window_geometry_intents: HashMap::new(),
+            layout_preview_sizes: HashMap::new(),
             restore_window_geometries: HashMap::new(),
             window_layout: create_window_layout(window_layout_kind),
             layout_restore_geometries: HashMap::new(),

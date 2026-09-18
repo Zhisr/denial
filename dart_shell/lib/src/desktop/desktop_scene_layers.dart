@@ -295,11 +295,6 @@ class _DesktopPopupSurfaceLayers extends StatelessWidget {
                 desktopOutputPixelGridForMonitor(layout, placement.monitorId),
           ),
         );
-        final windowLayout = ref.watch(
-          shellSettingsProvider.select(
-            (settings) => settings.layout.windowLayout,
-          ),
-        );
         final devicePixelRatio =
             outputPixelGrid?.scale ?? MediaQuery.devicePixelRatioOf(context);
         final pixelGridOrigin =
@@ -312,10 +307,7 @@ class _DesktopPopupSurfaceLayers extends StatelessWidget {
               )
             : this.frame;
         final transformed = overview || switching || offscreenMinimized;
-        final scrollingOutputClip = desktopScrollingOutputClip(
-          windowLayout: windowLayout,
-          pinned: window.pinned,
-          transformed: transformed,
+        final outputClip = desktopOutputClip(
           activelyDragging: placement.dragging,
           outputRect: outputPixelGrid?.logicalRect,
         );
@@ -385,7 +377,7 @@ class _DesktopPopupSurfaceLayers extends StatelessWidget {
                         pixelGridScale: devicePixelRatio,
                         pixelGridOrigin: pixelGridOrigin,
                         alignSizeToDevicePixels: true,
-                        globalClipRect: scrollingOutputClip,
+                        globalClipRect: outputClip,
                         child: ShellBackdropBlur(
                           blur: !layer.opaque || layer.opacity < 1.0,
                           useWindowAlphaThreshold: true,

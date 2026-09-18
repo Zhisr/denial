@@ -1388,9 +1388,9 @@ fn close_window(window: &Window) -> bool {
 }
 
 #[cfg(feature = "flutter")]
-/// Applies SUPER+W maximize. Scrolling layouts use true client maximize and
-/// keep the expanded column in their strip; fixed layouts retain the legacy
-/// shell-owned overlay path.
+/// Applies SUPER+W maximize. Scrolling layouts toggle their authoritative
+/// column state directly, then publish the matching client state in the same
+/// arrangement pass. Fixed layouts retain the legacy shell-owned overlay path.
 pub(super) fn toggle_shell_maximize_focused_toplevel(state: &mut RuntimeState) -> bool {
     if let Some(window_id) = focused_local_window(state) {
         queue_local_window_action(state, window_id, WindowAction::ToggleMaximize);
@@ -1418,18 +1418,26 @@ pub(super) fn toggle_shell_maximize_focused_toplevel(state: &mut RuntimeState) -
         {
             return true;
         }
-        let maximized = client.maximized
-            || state
-                .wayland
-                .as_ref()
-                .expect("missing Wayland frontend")
-                .window_is_layout_maximized(&window);
-        let request = if maximized {
-            ManagedClientStateRequest::Unmaximize
-        } else {
-            ManagedClientStateRequest::Maximize
+        let maximized = {
+            let frontend = state.wayland.as_mut().expect("missing Wayland frontend");
+            let maximized = !frontend.window_is_layout_maximized(&window);
+            if !frontend.set_layout_window_maximized(&window, maximized) {
+                return true;
+            }
+            frontend.arrange_layout_windows();
+            maximized
         };
-        return apply_managed_client_state_request(state, &window, request);
+        queue_window_action_for_window(
+            state,
+            &window,
+            if maximized {
+                WindowAction::Maximize
+            } else {
+                WindowAction::Restore
+            },
+        );
+        state.scene_sync.mark_dirty();
+        return true;
     }
 
     let (target, action) = {
@@ -1913,7 +1921,7 @@ pub(super) fn apply_managed_client_state_request(
                         .wayland
                         .as_ref()
                         .expect("missing Wayland frontend")
-                        .maximize_to_edges_area(Some(&output), monitor)
+                        .maximize_work_area(Some(&output), monitor)
                 })
             } else {
                 state

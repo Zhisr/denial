@@ -78,26 +78,6 @@ impl WaylandFrontend {
         output: Option<&Output>,
         geometry: Rectangle<i32, Logical>,
     ) -> Rectangle<i32, Logical> {
-        self.output_work_area(output, geometry, true)
-    }
-
-    /// The Niri-style true-maximize area: preserve the exclusive system bar,
-    /// but ignore ordinary layout padding so the window reaches every other
-    /// output edge.
-    pub(super) fn maximize_to_edges_area(
-        &self,
-        output: Option<&Output>,
-        geometry: Rectangle<i32, Logical>,
-    ) -> Rectangle<i32, Logical> {
-        self.output_work_area(output, geometry, false)
-    }
-
-    fn output_work_area(
-        &self,
-        output: Option<&Output>,
-        geometry: Rectangle<i32, Logical>,
-        include_padding: bool,
-    ) -> Rectangle<i32, Logical> {
         use crate::options::SystemBarSide;
         let bar = &self.work_area.system_bar;
         // Every present configured connector hosts its own bar. If the
@@ -121,7 +101,7 @@ impl WaylandFrontend {
             });
         let bar_side = hosts_bar.then_some(bar.side);
         let padding = self.work_area.maximize_padding;
-        let padding = if include_padding && padding.is_finite() {
+        let padding = if padding.is_finite() {
             (padding.ceil() as i32).max(0)
         } else {
             0

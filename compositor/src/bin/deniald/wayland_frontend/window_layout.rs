@@ -444,7 +444,8 @@ impl WaylandFrontend {
 
     /// Plan the exact post-drop layout on a disposable snapshot. Publishing
     /// every changed sibling lets Flutter animate a whole scrolling column as
-    /// one coherent rearrangement while protocol geometry remains untouched.
+    /// one coherent rearrangement. The grab may request these speculative
+    /// client sizes, but this disposable layout never becomes authoritative.
     #[cfg(feature = "flutter")]
     pub(crate) fn layout_drop_preview(
         &self,
@@ -469,7 +470,6 @@ impl WaylandFrontend {
                 (
                     output.id,
                     self.maximize_work_area(Some(&output.output), output.logical_geometry),
-                    self.maximize_to_edges_area(Some(&output.output), output.logical_geometry),
                     scrolling_layout_axis(output.transform),
                 )
             })
@@ -481,13 +481,13 @@ impl WaylandFrontend {
                 let Some(space) = preview.space_for(&target_id) else {
                     return Vec::new();
                 };
-                let Some((_, work_area, maximize_area, axis)) = contexts
+                let Some((_, work_area, axis)) = contexts
                     .iter()
-                    .find(|(output, _, _, _)| *output == space.output)
+                    .find(|(output, _, _)| *output == space.output)
                 else {
                     return Vec::new();
                 };
-                preview.set_maximize_area(space, *maximize_area);
+                preview.set_maximize_area(space, *work_area);
                 preview.prepare_arrange(space, *work_area, gap, *axis);
                 preview.move_beside_for_preview(
                     &window_id, &target_id, direction, *work_area, gap, *axis,
@@ -499,9 +499,9 @@ impl WaylandFrontend {
         }
         preview.activate(&window_id);
 
-        for (output, work_area, maximize_area, axis) in &contexts {
+        for (output, work_area, axis) in &contexts {
             for workspace in 1..=workspace_count {
-                preview.set_maximize_area(LayoutSpace::new(*output, workspace), *maximize_area);
+                preview.set_maximize_area(LayoutSpace::new(*output, workspace), *work_area);
                 preview.prepare_arrange(
                     LayoutSpace::new(*output, workspace),
                     *work_area,
@@ -518,7 +518,7 @@ impl WaylandFrontend {
             .collect::<HashMap<_, _>>();
         contexts
             .into_iter()
-            .flat_map(|(output, work_area, _, _)| {
+            .flat_map(|(output, work_area, _)| {
                 (1..=workspace_count).flat_map({
                     let preview = &preview;
                     move |workspace| {
@@ -991,15 +991,14 @@ impl WaylandFrontend {
                 (
                     output.id,
                     self.maximize_work_area(Some(&output.output), output.logical_geometry),
-                    self.maximize_to_edges_area(Some(&output.output), output.logical_geometry),
                     scrolling_layout_axis(output.transform),
                 )
             })
             .collect::<Vec<_>>();
-        for (output, work_area, maximize_area, axis) in contexts {
+        for (output, work_area, axis) in contexts {
             for workspace in 1..=workspace_count {
                 self.window_layout
-                    .set_maximize_area(LayoutSpace::new(output, workspace), maximize_area);
+                    .set_maximize_area(LayoutSpace::new(output, workspace), work_area);
                 self.window_layout.prepare_arrange(
                     LayoutSpace::new(output, workspace),
                     work_area,

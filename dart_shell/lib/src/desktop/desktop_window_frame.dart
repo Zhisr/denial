@@ -212,9 +212,6 @@ class _DesktopWindowFrame extends ConsumerWidget {
         (settings) => settings.layout.workspaceSwitchingOrientation,
       ),
     );
-    final windowLayout = ref.watch(
-      shellSettingsProvider.select((settings) => settings.layout.windowLayout),
-    );
     final followsLivePlacement =
         this.placement.dragging &&
         liveGeometry?.dragging == true &&
@@ -239,10 +236,7 @@ class _DesktopWindowFrame extends ConsumerWidget {
     final outputRect = outputPixelGrid?.logicalRect;
     final transformed =
         overview || switching || desktopWidget || offscreenMinimized;
-    final scrollingOutputClip = desktopScrollingOutputClip(
-      windowLayout: windowLayout,
-      pinned: window.pinned,
-      transformed: transformed,
+    final outputClip = desktopOutputClip(
       activelyDragging: placement.dragging,
       outputRect: outputRect,
     );
@@ -306,7 +300,7 @@ class _DesktopWindowFrame extends ConsumerWidget {
       pixelGridScale: devicePixelRatio,
       pixelGridOrigin: pixelGridOrigin,
       alignSizeToDevicePixels: true,
-      globalClipRect: scrollingOutputClip,
+      globalClipRect: outputClip,
       child: DesktopWorkspaceWindowTransition(
         placement: placement,
         transition: workspaceTransition,

@@ -462,6 +462,12 @@ pub(super) struct WaylandFrontend {
     surfaces_by_id: HashMap<u64, WlSurface>,
     next_surface_id: u64,
     window_geometry_intents: HashMap<ObjectId, WindowGeometryIntent>,
+    /// Client sizes requested for presentation-only layout drop previews.
+    ///
+    /// These do not replace the authoritative layout geometry contract. They
+    /// only prevent a speculative client commit from being mistaken for a
+    /// challenge to that contract while the pointer grab remains active.
+    layout_preview_sizes: HashMap<ObjectId, Size<i32, Logical>>,
     restore_window_geometries: HashMap<ObjectId, Rectangle<i32, Logical>>,
     window_layout: Box<dyn WindowLayout<ObjectId>>,
     layout_restore_geometries: HashMap<ObjectId, Rectangle<i32, Logical>>,
@@ -769,6 +775,14 @@ impl WindowGeometryAuthority {
     }
 }
 
+fn committed_size_requires_reassertion(
+    target: Size<i32, Logical>,
+    preview: Option<Size<i32, Logical>>,
+    committed: Size<i32, Logical>,
+) -> bool {
+    preview.is_none() && committed != target
+}
+
 #[cfg(test)]
 mod window_geometry_intent_tests {
     use super::*;
@@ -803,6 +817,24 @@ mod window_geometry_intent_tests {
         ] {
             assert!(intent(authority).retained_after_commit(committed));
         }
+    }
+
+    #[test]
+    fn layout_preview_suppresses_authoritative_size_reassertion() {
+        let target = Size::from((800, 600));
+        let preview = Size::from((400, 600));
+
+        assert!(!committed_size_requires_reassertion(
+            target,
+            Some(preview),
+            preview,
+        ));
+        assert!(!committed_size_requires_reassertion(
+            target,
+            Some(preview),
+            Size::from((640, 600)),
+        ));
+        assert!(committed_size_requires_reassertion(target, None, preview,));
     }
 
     #[test]

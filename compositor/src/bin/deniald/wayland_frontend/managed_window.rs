@@ -367,6 +367,36 @@ impl<'a> ManagedWindow<'a> {
         }
     }
 
+    /// Requests a speculative client size for a layout drop preview.
+    ///
+    /// The frontend deliberately keeps its authoritative geometry contract
+    /// unchanged. XDG clients receive normal interactive-resize state while
+    /// X11 clients need the complete temporary ConfigureWindow rectangle.
+    #[cfg(feature = "flutter")]
+    pub(super) fn prepare_layout_preview(&self, target: Rectangle<i32, Logical>, finished: bool) {
+        match self.protocol {
+            ManagedWindowProtocol::Xdg(toplevel) if toplevel.wl_surface().is_alive() => {
+                toplevel.with_pending_state(|pending| {
+                    if finished {
+                        pending.states.unset(xdg_toplevel::State::Resizing);
+                    } else {
+                        pending.states.set(xdg_toplevel::State::Resizing);
+                    }
+                    pending.size = Some(target.size);
+                });
+                toplevel.send_pending_configure();
+            }
+            ManagedWindowProtocol::X11(surface)
+                if !surface.is_override_redirect() && surface.last_configure() != target =>
+            {
+                if let Err(error) = surface.configure(target) {
+                    warn!(%error, window = surface.window_id(), "could not configure layout preview geometry");
+                }
+            }
+            _ => {}
+        }
+    }
+
     pub(super) fn accepts_interactive_resize_updates(&self) -> bool {
         match self.protocol {
             ManagedWindowProtocol::Xdg(toplevel) => {

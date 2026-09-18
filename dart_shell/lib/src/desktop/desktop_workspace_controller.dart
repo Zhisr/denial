@@ -5,6 +5,7 @@ class _NativeWindowRevisions {
 
   int geometry;
   int metadata;
+  bool placementTransactionActive = false;
 }
 
 final desktopWorkspaceProvider =
@@ -128,7 +129,7 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
       if (_windowLayout == DesktopWindowLayout.scrolling &&
           !_localFlutterWindowIds.contains(placement.objectId)) {
         // Native scrolling maximize remains a tile in the strip. Rust will
-        // publish its new edge-to-edge placement after the work area changes;
+        // publish its new padded-work-area placement after the work area changes;
         // forcing the visible work-area rectangle here would turn it back into
         // an overlay and prevent it from scrolling off-screen.
         continue;
@@ -287,6 +288,7 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
         // until their end phase commits the final frame.
         if (geometryIsNew &&
             !existing.dragging &&
+            !revisions.placementTransactionActive &&
             !existing.layoutPreviewing &&
             nativeGeometry != null) {
           final nativeFrame = nativeFullscreen
@@ -319,6 +321,7 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
             }
           }
         } else if (!existing.dragging &&
+            !revisions.placementTransactionActive &&
             !existing.layoutPreviewing &&
             decorationChanged &&
             !nativeFullscreen) {
@@ -831,10 +834,24 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
     }
     if (geometryIsNew) {
       _pendingFlutterProposedFrames.remove(objectId);
+      if (!layoutPreview) {
+        revisions.placementTransactionActive =
+            event.phase != DenialWindowPlacementPhase.end;
+      }
     }
 
     final monitorChanged =
         metadataIsNew && event.monitorId != placement.monitorId;
+    final dragging = geometryIsNew
+        ? layoutPreview
+              ? placement.dragging
+              : switch (event.phase) {
+                  DenialWindowPlacementPhase.begin =>
+                    event.change == DenialWindowPlacementChange.move,
+                  DenialWindowPlacementPhase.update => placement.dragging,
+                  DenialWindowPlacementPhase.end => false,
+                }
+        : placement.dragging;
 
     if (placement.fullscreen) {
       final fullscreenFrame = event.contentRect.intersect(
@@ -849,11 +866,7 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
         frame: geometryIsNew ? fullscreenFrame : placement.frame,
         monitorId: metadataIsNew ? event.monitorId : placement.monitorId,
         workspaceId: metadataIsNew ? event.workspaceId : placement.workspaceId,
-        dragging: geometryIsNew
-            ? layoutPreview
-                  ? placement.dragging
-                  : event.phase != DenialWindowPlacementPhase.end
-            : placement.dragging,
+        dragging: dragging,
         layoutPreviewing: geometryIsNew
             ? layoutPreview
                   ? event.phase != DenialWindowPlacementPhase.end
@@ -896,11 +909,7 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
           ? false
           : placement.maximized,
       fullscreen: metadataIsNew ? false : placement.fullscreen,
-      dragging: geometryIsNew
-          ? layoutPreview
-                ? placement.dragging
-                : event.phase != DenialWindowPlacementPhase.end
-          : placement.dragging,
+      dragging: dragging,
       layoutPreviewing: geometryIsNew
           ? layoutPreview
                 ? event.phase != DenialWindowPlacementPhase.end

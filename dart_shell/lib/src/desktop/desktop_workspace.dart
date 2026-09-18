@@ -118,24 +118,15 @@ abstract final class DesktopMetrics {
   }
 }
 
-/// Clips only layout-managed scrolling tiles to their output viewport.
+/// Clips a window to its owning output viewport.
 ///
-/// Pinned windows are floating overlays even while the desktop uses the
-/// scrolling layout. An actively dragged tile is also temporarily presented
-/// above output viewports so it remains visible while crossing monitors.
-Rect? desktopScrollingOutputClip({
-  required DesktopWindowLayout windowLayout,
-  required bool pinned,
-  required bool transformed,
+/// This clip is invariant across overview, switcher, workspace, minimize, and
+/// pinned-window presentation. Only an actively dragged window may cross its
+/// owning output while the drag is in progress.
+Rect? desktopOutputClip({
   required bool activelyDragging,
   required Rect? outputRect,
-}) =>
-    windowLayout == DesktopWindowLayout.scrolling &&
-        !pinned &&
-        !transformed &&
-        !activelyDragging
-    ? outputRect
-    : null;
+}) => activelyDragging ? null : outputRect;
 
 enum DesktopPanel { none, launcher, dashboard }
 

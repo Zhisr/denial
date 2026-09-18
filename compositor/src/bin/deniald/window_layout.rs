@@ -212,9 +212,9 @@ where
         false
     }
 
-    /// Supply the area used by true maximization. Fixed layouts ignore it;
-    /// scrolling keeps it separate from the inset working area so a maximized
-    /// column can reach the output edges without leaving the strip.
+    /// Supply the area used by protocol-aware maximization. Fixed layouts
+    /// ignore it; scrolling expands the column to this full padded work area
+    /// without removing it from the strip.
     fn set_maximize_area(&mut self, _space: LayoutSpace, _maximize_area: Rectangle<i32, Logical>) {}
 
     /// Toggle true maximize for a managed leaf. Layouts that do not model

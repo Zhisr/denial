@@ -111,9 +111,9 @@ on another tile's right edge creates a horizontal split inside that column.
 The existing maximize padding is also used as the gap between sibling tiles.
 Transient dialogs, fixed-size toplevels, auxiliary X11 window types, and
 override-redirect X11 surfaces remain floating. In the scrolling layout,
-maximizing expands a standalone column to the output edges while retaining it
-in the strip; fullscreen remains an overlay. Fixed layouts retain their
-existing maximize overlay behavior. Hold SUPER and left-drag a tile onto
+maximizing expands a standalone column to the padded work-area edges while
+retaining it in the strip; fullscreen remains an overlay. Fixed layouts retain
+their existing maximize overlay behavior. Hold SUPER and left-drag a tile onto
 another tile to swap their leaves without rebuilding the tree. Switching back
 to stacking restores the windows' pre-tiling rectangles.
 

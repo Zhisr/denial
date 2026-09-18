@@ -79,6 +79,18 @@ void main() {
     );
     expect(field.controller?.text, '129');
   });
+
+  testWidgets('channel labels stay above the input outline', (tester) async {
+    await tester.pumpWidget(_ColorEditorHarness(onChanged: (_) {}));
+
+    final labelRect = tester.getRect(find.text('Red'));
+    final fieldFinder = find.byKey(settingsColorInputRedFieldKey);
+    final fieldRect = tester.getRect(fieldFinder);
+    final field = tester.widget<TextField>(fieldFinder);
+
+    expect(labelRect.bottom, lessThan(fieldRect.top));
+    expect(field.decoration?.labelText, isNull);
+  });
 }
 
 class _ColorEditorHarness extends StatefulWidget {

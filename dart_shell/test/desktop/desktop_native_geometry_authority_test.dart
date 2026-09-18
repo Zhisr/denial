@@ -107,7 +107,7 @@ void main() {
     addTearDown(container.dispose);
     final workspace = container.read(desktopWorkspaceProvider.notifier);
     const viewSize = Size(1920, 1080);
-    const maximizedGeometry = Rect.fromLTWH(0, 40, 1920, 1040);
+    const maximizedGeometry = Rect.fromLTWH(8, 40, 1904, 1032);
     final maximized = nativeWindow(
       objectKind: 'xdg',
       geometry: maximizedGeometry,
@@ -130,7 +130,7 @@ void main() {
       maximizedGeometry,
     );
 
-    const scrolledGeometry = Rect.fromLTWH(-1932, 40, 1920, 1040);
+    const scrolledGeometry = Rect.fromLTWH(-1906, 40, 1904, 1032);
     expect(
       workspace.applyNativePlacement(
         7,
@@ -150,5 +150,99 @@ void main() {
     expect(placement.maximized, isTrue);
     expect(placement.frame, scrolledGeometry);
     expect(placement.frameBorder, 0);
+  });
+
+  test('only a begun move marks a scrolling tile as actively dragged', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final workspace = container.read(desktopWorkspaceProvider.notifier);
+    const viewSize = Size(3840, 1080);
+    const initial = Rect.fromLTWH(100, 50, 600, 500);
+
+    workspace.syncWindows(
+      <DenialWindow>[
+        nativeWindow(objectKind: 'xdg', geometry: initial, fullscreen: false),
+      ],
+      viewSize,
+      1,
+      snapshotSequence: 30,
+      windowLayout: DesktopWindowLayout.scrolling,
+    );
+
+    for (final event in const <DenialWindowPlacementEvent>[
+      DenialWindowPlacementEvent(
+        sequence: 31,
+        windowId: 27,
+        contentRect: Rect.fromLTWH(2000, 50, 700, 500),
+        monitorId: 1,
+        workspaceId: 1,
+        phase: DenialWindowPlacementPhase.begin,
+        change: DenialWindowPlacementChange.resize,
+      ),
+      DenialWindowPlacementEvent(
+        sequence: 32,
+        windowId: 27,
+        contentRect: Rect.fromLTWH(2000, 50, 750, 500),
+        monitorId: 1,
+        workspaceId: 1,
+        phase: DenialWindowPlacementPhase.update,
+        change: DenialWindowPlacementChange.resize,
+      ),
+      DenialWindowPlacementEvent(
+        sequence: 33,
+        windowId: 27,
+        contentRect: Rect.fromLTWH(2050, 50, 750, 500),
+        monitorId: 1,
+        workspaceId: 1,
+        phase: DenialWindowPlacementPhase.update,
+        change: DenialWindowPlacementChange.move,
+      ),
+    ]) {
+      expect(workspace.applyNativePlacement(7, event), isTrue);
+      expect(
+        container.read(desktopWorkspaceProvider).placements[7]!.dragging,
+        isFalse,
+      );
+    }
+
+    expect(
+      workspace.applyNativePlacement(
+        7,
+        const DenialWindowPlacementEvent(
+          sequence: 34,
+          windowId: 27,
+          contentRect: Rect.fromLTWH(2100, 50, 750, 500),
+          monitorId: 1,
+          workspaceId: 1,
+          phase: DenialWindowPlacementPhase.begin,
+          change: DenialWindowPlacementChange.move,
+        ),
+      ),
+      isTrue,
+    );
+    expect(
+      container.read(desktopWorkspaceProvider).placements[7]!.dragging,
+      isTrue,
+    );
+
+    expect(
+      workspace.applyNativePlacement(
+        7,
+        const DenialWindowPlacementEvent(
+          sequence: 35,
+          windowId: 27,
+          contentRect: Rect.fromLTWH(2150, 50, 750, 500),
+          monitorId: 1,
+          workspaceId: 1,
+          phase: DenialWindowPlacementPhase.end,
+          change: DenialWindowPlacementChange.move,
+        ),
+      ),
+      isTrue,
+    );
+    expect(
+      container.read(desktopWorkspaceProvider).placements[7]!.dragging,
+      isFalse,
+    );
   });
 }

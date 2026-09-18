@@ -371,24 +371,25 @@ class _SettingsColorValueEditorState extends State<SettingsColorValueEditor> {
           ],
         );
       case _ColorValueMode.hex:
-        return TextField(
-          key: settingsColorInputHexFieldKey,
-          controller: _hexController,
-          autocorrect: false,
-          enableSuggestions: false,
-          textCapitalization: TextCapitalization.characters,
-          textInputAction: TextInputAction.done,
-          inputFormatters: <TextInputFormatter>[
-            FilteringTextInputFormatter.allow(RegExp(r'[0-9a-fA-F#xX]')),
-            LengthLimitingTextInputFormatter(8),
-          ],
-          onChanged: (_) => _commitHex(),
-          onSubmitted: (_) => _commitHex(showError: true),
-          onTapOutside: (_) => _commitHex(showError: true),
-          style: _fieldTextStyle(context),
-          decoration: _fieldDecoration(
-            context,
-            label: l10n.settingsColorInputHexValue,
+        return _labeledField(
+          context,
+          label: l10n.settingsColorInputHexValue,
+          child: TextField(
+            key: settingsColorInputHexFieldKey,
+            controller: _hexController,
+            autocorrect: false,
+            enableSuggestions: false,
+            textCapitalization: TextCapitalization.characters,
+            textInputAction: TextInputAction.done,
+            inputFormatters: <TextInputFormatter>[
+              FilteringTextInputFormatter.allow(RegExp(r'[0-9a-fA-F#xX]')),
+              LengthLimitingTextInputFormatter(8),
+            ],
+            onChanged: (_) => _commitHex(),
+            onSubmitted: (_) => _commitHex(showError: true),
+            onTapOutside: (_) => _commitHex(showError: true),
+            style: _fieldTextStyle(context),
+            decoration: _fieldDecoration(context),
           ),
         );
     }
@@ -416,25 +417,57 @@ class _SettingsColorValueEditorState extends State<SettingsColorValueEditor> {
         return KeyEventResult.ignored;
       },
       child: Builder(
-        builder: (context) => TextField(
-          key: key,
-          controller: controller,
-          autocorrect: false,
-          enableSuggestions: false,
-          keyboardType: TextInputType.number,
-          textInputAction: TextInputAction.next,
-          textAlign: TextAlign.center,
-          inputFormatters: <TextInputFormatter>[
-            FilteringTextInputFormatter.digitsOnly,
-            LengthLimitingTextInputFormatter(3),
-          ],
-          onChanged: (_) => _commitActive(),
-          onSubmitted: (_) => _commitActive(showError: true),
-          onTapOutside: (_) => _commitActive(showError: true),
-          style: _fieldTextStyle(context),
-          decoration: _fieldDecoration(context, label: label),
+        builder: (context) => _labeledField(
+          context,
+          label: label,
+          child: TextField(
+            key: key,
+            controller: controller,
+            autocorrect: false,
+            enableSuggestions: false,
+            keyboardType: TextInputType.number,
+            textInputAction: TextInputAction.next,
+            textAlign: TextAlign.center,
+            inputFormatters: <TextInputFormatter>[
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(3),
+            ],
+            onChanged: (_) => _commitActive(),
+            onSubmitted: (_) => _commitActive(showError: true),
+            onTapOutside: (_) => _commitActive(showError: true),
+            style: _fieldTextStyle(context),
+            decoration: _fieldDecoration(context),
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _labeledField(
+    BuildContext context, {
+    required String label,
+    required Widget child,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 4),
+          child: ExcludeSemantics(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: ShellText.base.copyWith(
+                color: context.shellColors.textTertiary,
+                fontSize: 10,
+                height: 1,
+              ),
+            ),
+          ),
+        ),
+        Semantics(label: label, child: child),
+      ],
     );
   }
 
@@ -447,21 +480,13 @@ class _SettingsColorValueEditorState extends State<SettingsColorValueEditor> {
     );
   }
 
-  InputDecoration _fieldDecoration(
-    BuildContext context, {
-    required String label,
-  }) {
+  InputDecoration _fieldDecoration(BuildContext context) {
     final borderRadius = context.shellTheme.borderRadius(10);
     final border = OutlineInputBorder(
       borderRadius: borderRadius,
       borderSide: BorderSide(color: context.shellColors.hairline),
     );
     return InputDecoration(
-      labelText: label,
-      labelStyle: ShellText.base.copyWith(
-        color: context.shellColors.textTertiary,
-        fontSize: 10,
-      ),
       isDense: true,
       filled: true,
       fillColor: context.shellColors.surfaceContainerHigh,

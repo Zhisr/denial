@@ -855,6 +855,45 @@ impl WaylandFrontend {
         }
     }
 
+    #[cfg(feature = "flutter")]
+    pub(crate) fn update_window_layout_preview(
+        &mut self,
+        window: &Window,
+        size: Size<i32, Logical>,
+    ) {
+        let Some(root_surface) = self.window_root_surface(window) else {
+            return;
+        };
+        if self.layout_preview_sizes.insert(root_surface.id(), size) == Some(size) {
+            return;
+        }
+
+        let mut target = self.window_geometry_target(window);
+        target.size = size;
+        if let Some(managed) = ManagedWindow::new(window) {
+            managed.prepare_layout_preview(target, false);
+        }
+    }
+
+    #[cfg(feature = "flutter")]
+    pub(crate) fn finish_window_layout_preview(&mut self, window: &Window) {
+        let Some(root_surface) = self.window_root_surface(window) else {
+            return;
+        };
+        if self
+            .layout_preview_sizes
+            .remove(&root_surface.id())
+            .is_none()
+        {
+            return;
+        }
+
+        let target = self.window_geometry_target(window);
+        if let Some(managed) = ManagedWindow::new(window) {
+            managed.prepare_layout_preview(target, true);
+        }
+    }
+
     pub(crate) fn window_accepts_interactive_resize_updates(&self, window: &Window) -> bool {
         ManagedWindow::new(window)
             .is_some_and(|managed| managed.accepts_interactive_resize_updates())
@@ -908,7 +947,8 @@ impl WaylandFrontend {
         // geometry coordinate system.  `committed.loc` remains surface-local
         // and must affect rendering only (Space subtracts it internally).
         self.space.relocate_element(window, target.loc);
-        if committed.size != target.size {
+        let preview_size = self.layout_preview_sizes.get(&surface_id).copied();
+        if committed_size_requires_reassertion(target.size, preview_size, committed.size) {
             let action = self
                 .window_geometry_intents
                 .get_mut(&surface_id)
@@ -1299,6 +1339,7 @@ impl WaylandFrontend {
 
         self.surface_buffers.remove(&object_id);
         self.window_geometry_intents.remove(&object_id);
+        self.layout_preview_sizes.remove(&object_id);
         self.restore_window_geometries.remove(&object_id);
         let layout_changed = self.window_layout.remove(&object_id);
         self.layout_restore_geometries.remove(&object_id);

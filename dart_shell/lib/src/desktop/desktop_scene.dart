@@ -699,15 +699,7 @@ class _DesktopSceneState extends ConsumerState<_DesktopScene> {
         continue;
       }
       final closeId = _nextCloseId++;
-      final outputClip = desktopScrollingOutputClip(
-        windowLayout: ref.read(shellSettingsProvider).layout.windowLayout,
-        pinned: window.pinned,
-        transformed:
-            oldWidget.desktop.isInOverview(window.objectId) ||
-            DesktopWindowSwitcherLayout.contains(
-              oldWidget.windowSwitcher,
-              window.objectId,
-            ),
+      final outputClip = desktopOutputClip(
         activelyDragging: placement.dragging,
         outputRect: desktopOutputPixelGridForMonitor(
           oldWidget.displayLayout,

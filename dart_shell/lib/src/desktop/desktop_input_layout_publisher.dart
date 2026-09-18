@@ -153,23 +153,15 @@ class _DesktopInputLayoutPublisherState
           ..sort((a, b) => compareDesktopWindowStack(a, b, windowsById));
 
     final canvas = Offset.zero & viewSize;
-    final scrollingOutputRects =
-        source.windowLayout == DesktopWindowLayout.scrolling
-        ? <int, Rect>{
-            for (final output
-                in source.displayLayout?.outputs ?? const <DisplayOutput>[])
-              output.monitorId: output.logicalRect,
-          }
-        : const <int, Rect>{};
+    final outputRects = <int, Rect>{
+      for (final output
+          in source.displayLayout?.outputs ?? const <DisplayOutput>[])
+        output.monitorId: output.logicalRect,
+    };
     Rect? outputClipFor(DesktopWindowPlacement placement) {
-      return desktopScrollingOutputClip(
-        windowLayout: source.windowLayout,
-        pinned: windowsById[placement.objectId]?.pinned ?? false,
-        transformed:
-            desktop.isInOverview(placement.objectId) ||
-            (switcher?.objectIds.contains(placement.objectId) ?? false),
+      return desktopOutputClip(
         activelyDragging: placement.dragging,
-        outputRect: scrollingOutputRects[placement.monitorId],
+        outputRect: outputRects[placement.monitorId],
       );
     }
 
