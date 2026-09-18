@@ -1220,6 +1220,32 @@ fn update_horizontal_layout_scroll(state: &mut RuntimeState, delta_x: f64) -> bo
 }
 
 #[cfg(feature = "flutter")]
+fn update_mouse_wheel_layout_scroll(state: &mut RuntimeState, vertical_delta: f64) -> bool {
+    let Some(frame) = state
+        .wayland
+        .as_mut()
+        .and_then(|frontend| frontend.scroll_layout_with_mouse_wheel(vertical_delta))
+    else {
+        return false;
+    };
+    let changed = !frame.placements.is_empty();
+    for (window, geometry) in frame.placements {
+        super::window_management::queue_transient_window_placement_for_monitor(
+            state,
+            &window,
+            geometry,
+            frame.monitor_geometry,
+            WindowPlacementPhase::Update,
+            WindowPlacementChange::Move,
+        );
+    }
+    if changed {
+        state.scene_sync.mark_dirty();
+    }
+    changed
+}
+
+#[cfg(feature = "flutter")]
 fn finish_horizontal_layout_scroll(
     state: &mut RuntimeState,
     cancelled: bool,

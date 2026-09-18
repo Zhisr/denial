@@ -363,7 +363,7 @@ impl WaylandFrontend {
         let mut target = normal_geometry;
         if state.maximized {
             let frame = self.maximize_work_area(Some(&output), output_geometry);
-            target = shell_content_geometry(frame, server_frame);
+            target = shell_content_geometry(frame, false);
             self.shell_maximize_restore_geometries
                 .insert(object_id.clone(), normal_geometry);
         }

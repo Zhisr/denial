@@ -436,6 +436,10 @@ class _SettingsPageBody extends ConsumerWidget {
           settings: settings,
           displayLayout: displayLayout,
           onWindowLayoutChanged: controller.setDesktopWindowLayout,
+          onScrollingLayoutWheelSpeedChanged:
+              controller.setScrollingLayoutWheelSpeed,
+          onScrollingLayoutWheelUpDirectionChanged:
+              controller.setScrollingLayoutWheelUpDirection,
           onWorkspacesEnabledChanged: controller.setWorkspacesEnabled,
           onWorkspaceCountChanged: controller.setWorkspaceCount,
           onWorkspaceSwitchingOrientationChanged:

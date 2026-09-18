@@ -121,14 +121,19 @@ abstract final class DesktopMetrics {
 /// Clips only layout-managed scrolling tiles to their output viewport.
 ///
 /// Pinned windows are floating overlays even while the desktop uses the
-/// scrolling layout, so their rendering and input regions must remain free of
-/// the tile viewport clip.
+/// scrolling layout. An actively dragged tile is also temporarily presented
+/// above output viewports so it remains visible while crossing monitors.
 Rect? desktopScrollingOutputClip({
   required DesktopWindowLayout windowLayout,
   required bool pinned,
   required bool transformed,
+  required bool activelyDragging,
   required Rect? outputRect,
-}) => windowLayout == DesktopWindowLayout.scrolling && !pinned && !transformed
+}) =>
+    windowLayout == DesktopWindowLayout.scrolling &&
+        !pinned &&
+        !transformed &&
+        !activelyDragging
     ? outputRect
     : null;
 
@@ -306,8 +311,9 @@ class DesktopWindowPlacement {
   final Rect? restoreFrame;
   final Rect? fullscreenRestoreFrame;
 
-  double get frameBorder =>
-      fullscreen || !serverSideDecorated ? 0.0 : DesktopMetrics.frameBorder;
+  double get frameBorder => fullscreen || maximized || !serverSideDecorated
+      ? 0.0
+      : DesktopMetrics.frameBorder;
 
   Rect get contentRect => frame.deflate(frameBorder);
 

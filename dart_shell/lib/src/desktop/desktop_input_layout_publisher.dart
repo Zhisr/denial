@@ -95,6 +95,7 @@ class _DesktopInputLayoutPublisherState
             viewSize,
             devicePixelRatio,
             snapshotSequence: shell.windowSnapshotSequence,
+            windowLayout: settings.windowLayout,
           );
       final source = _DesktopInputLayoutSource(
         viewSize: viewSize,
@@ -167,6 +168,7 @@ class _DesktopInputLayoutPublisherState
         transformed:
             desktop.isInOverview(placement.objectId) ||
             (switcher?.objectIds.contains(placement.objectId) ?? false),
+        activelyDragging: placement.dragging,
         outputRect: scrollingOutputRects[placement.monitorId],
       );
     }

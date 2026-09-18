@@ -33,8 +33,9 @@ signed DNF repository serves Fedora 44; the same packages are retained as
 direct GitHub Release downloads. Arch Linux, CachyOS, and Omarchy use the
 signed Pacman repository. Alpine packages are retained as signed direct GitHub
 Release downloads; a native RSA-signed APK repository is not published yet.
-NixOS and Void do not yet have first-party binary repositories. The packaging
-boundary remains reusable for other distributions.
+NixOS has a first-party source flake and NixOS module, but no binary cache or
+binary repository. Void does not yet have a first-party binary repository. The
+packaging boundary remains reusable for other distributions.
 
 Omarchy 4.0 was validated with Denial owning DRM/KMS and the Wayland session,
 including the optimized Flutter shell, a native Wayland client, Xwayland, and

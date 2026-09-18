@@ -828,6 +828,14 @@ refresh_metadata() {
     "$(file_sha256 "$SOURCE_LOCK")"
   rm -rf --one-file-system -- "$metadata_stage"
   trap - EXIT
+
+  if command -v nix >/dev/null 2>&1; then
+    "$ROOT/tools/denial-nix" refresh-engine-lock
+    "$ROOT/tools/denial-nix" refresh-pub-locks
+  else
+    printf '%s\n' \
+      'Nix is unavailable; run `tools/denial-nix refresh-engine-lock` and `tools/denial-nix refresh-pub-locks` on a Nix host before committing.' >&2
+  fi
 }
 
 resolve_artifacts() {

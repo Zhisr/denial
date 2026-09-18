@@ -10,11 +10,14 @@ use smithay::utils::{Logical, Point, Rectangle, Size};
 use smithay::wayland::seat::WaylandFocus;
 use tracing::info;
 
+#[cfg(feature = "flutter")]
+use super::super::settings::ScrollingLayoutWheelUpDirection;
 use super::super::window_grab::constrain_dimension;
+#[cfg(feature = "flutter")]
+use super::super::window_layout::DEFAULT_SCROLLING_COLUMN_FRACTION;
 use super::super::window_layout::{
-    DEFAULT_SCROLLING_COLUMN_FRACTION, LayoutAxis, LayoutDirection, LayoutInsertion,
-    LayoutPlacement, LayoutResizeEdges, LayoutResizeRequest, LayoutSpace, WindowLayoutKind,
-    create_window_layout, directional_neighbor,
+    LayoutAxis, LayoutDirection, LayoutInsertion, LayoutPlacement, LayoutResizeEdges,
+    LayoutResizeRequest, LayoutSpace, WindowLayoutKind, create_window_layout, directional_neighbor,
 };
 use super::managed_window::ManagedWindow;
 #[cfg(feature = "flutter")]
@@ -30,6 +33,8 @@ pub(crate) struct HorizontalLayoutScrollFrame {
 
 #[cfg(feature = "flutter")]
 const TOUCHPAD_SCROLLING_TILE_SWIPE_DISTANCE: f64 = 125.0;
+#[cfg(feature = "flutter")]
+const MOUSE_WHEEL_ANGLE_PER_STEP: f64 = 15.0;
 
 const LAYOUT_DROP_EDGE_FRACTION: f64 = 0.28;
 const LAYOUT_DROP_HYSTERESIS_FRACTION: f64 = 0.04;
@@ -72,6 +77,23 @@ fn touchpad_scrolling_layout_delta(
     delta_x * default_tile_stride * swipe_speed_factor / TOUCHPAD_SCROLLING_TILE_SWIPE_DISTANCE
 }
 
+#[cfg(feature = "flutter")]
+fn mouse_wheel_scrolling_layout_delta(
+    vertical_delta: f64,
+    work_extent: i32,
+    gap: i32,
+    speed: f64,
+    up_direction: ScrollingLayoutWheelUpDirection,
+) -> f64 {
+    let default_tile_stride =
+        f64::from(work_extent.max(1)) * DEFAULT_SCROLLING_COLUMN_FRACTION + f64::from(gap.max(0));
+    let direction = match up_direction {
+        ScrollingLayoutWheelUpDirection::Left => -1.0,
+        ScrollingLayoutWheelUpDirection::Right => 1.0,
+    };
+    vertical_delta * direction * default_tile_stride * speed / MOUSE_WHEEL_ANGLE_PER_STEP
+}
+
 fn scrolling_layout_axis(transform: super::OutputTransform) -> LayoutAxis {
     if transform.swaps_axes() {
         LayoutAxis::Vertical
@@ -105,6 +127,56 @@ impl WaylandFrontend {
             .is_some_and(|surface| self.window_layout.contains(&surface.id()))
     }
 
+    pub(super) fn window_is_scrolling_layout_managed(&self, window: &Window) -> bool {
+        self.window_layout.kind() == WindowLayoutKind::Scrolling
+            && self.window_is_layout_managed(window)
+    }
+
+    #[cfg(feature = "flutter")]
+    pub(super) fn scrolling_resize_axis_for_window(&self, window: &Window) -> Option<LayoutAxis> {
+        if self.window_layout.kind() != WindowLayoutKind::Scrolling {
+            return None;
+        }
+        let window_id = self.window_root_surface(window)?.id();
+        let space = self.window_layout.space_for(&window_id)?;
+        self.outputs
+            .iter()
+            .find(|output| output.id == space.output)
+            .map(|output| scrolling_layout_axis(output.transform))
+    }
+
+    pub(super) fn window_is_layout_maximized(&self, window: &Window) -> bool {
+        self.window_root_surface(window)
+            .is_some_and(|surface| self.window_layout.is_maximized(&surface.id()))
+    }
+
+    pub(super) fn set_layout_window_maximized(&mut self, window: &Window, maximized: bool) -> bool {
+        if self.window_layout.kind() != WindowLayoutKind::Scrolling {
+            return false;
+        }
+        self.window_root_surface(window)
+            .is_some_and(|surface| self.window_layout.set_maximized(&surface.id(), maximized))
+    }
+
+    pub(super) fn layout_target_for_window(
+        &mut self,
+        window: &Window,
+    ) -> Option<Rectangle<i32, Logical>> {
+        let window_id = self.window_root_surface(window)?.id();
+        self.prepare_layout_arrangement();
+        let frame = self
+            .current_layout_placements()
+            .into_iter()
+            .find_map(|placement| (placement.window == window_id).then_some(placement.geometry))?;
+        #[cfg(feature = "flutter")]
+        let draw_frame =
+            super::shell_draws_server_frame(window) && !self.window_layout.is_maximized(&window_id);
+        #[cfg(feature = "flutter")]
+        return Some(shell_content_geometry(frame, draw_frame));
+        #[cfg(not(feature = "flutter"))]
+        Some(frame)
+    }
+
     /// Follow an activated window in layouts with a movable viewport.
     pub(crate) fn activate_layout_window(&mut self, window: &Window) -> bool {
         let Some(window_id) = self.window_root_surface(window).map(|surface| surface.id()) else {
@@ -127,6 +199,7 @@ impl WaylandFrontend {
         &mut self,
         delta_x: f64,
     ) -> Option<HorizontalLayoutScrollFrame> {
+        self.prepare_layout_arrangement();
         let (layout_space, work_area, gap, monitor_geometry, axis) =
             self.horizontal_layout_scroll_context()?;
         let swipe_speed_factor = self.settings.touchpad().scrolling_layout_swipe_speed_factor;
@@ -153,11 +226,44 @@ impl WaylandFrontend {
     }
 
     #[cfg(feature = "flutter")]
+    pub(crate) fn scroll_layout_with_mouse_wheel(
+        &mut self,
+        vertical_delta: f64,
+    ) -> Option<HorizontalLayoutScrollFrame> {
+        self.prepare_layout_arrangement();
+        let (layout_space, work_area, gap, monitor_geometry, axis) =
+            self.horizontal_layout_scroll_context()?;
+        let settings = self.settings.scrolling_layout_wheel_settings();
+        let delta_x = mouse_wheel_scrolling_layout_delta(
+            vertical_delta,
+            axis.main_extent(work_area),
+            gap,
+            settings.speed,
+            settings.up_direction,
+        );
+        if !self
+            .window_layout
+            .scroll_horizontally(layout_space, work_area, gap, axis, delta_x)
+        {
+            return None;
+        }
+        self.arrange_layout_windows();
+        Some(self.horizontal_layout_scroll_frame(
+            layout_space,
+            work_area,
+            gap,
+            monitor_geometry,
+            None,
+        ))
+    }
+
+    #[cfg(feature = "flutter")]
     pub(crate) fn finish_layout_horizontal_scroll(
         &mut self,
         cancelled: bool,
         projected_delta_x: Option<f64>,
     ) -> Option<HorizontalLayoutScrollFrame> {
+        self.prepare_layout_arrangement();
         let (layout_space, work_area, gap, monitor_geometry, axis) =
             self.horizontal_layout_scroll_context()?;
         let swipe_speed_factor = self.settings.touchpad().scrolling_layout_swipe_speed_factor;
@@ -354,18 +460,6 @@ impl WaylandFrontend {
         else {
             return Vec::new();
         };
-        let mut preview = self.window_layout.snapshot();
-        let changed = match target.mode() {
-            LayoutDropMode::Swap => preview.swap(&window_id, &target_id),
-            LayoutDropMode::Split(direction) => {
-                preview.move_beside(&window_id, &target_id, direction)
-            }
-        };
-        if !changed {
-            return Vec::new();
-        }
-        preview.activate(&window_id);
-
         let gap = self.layout_gap();
         let workspace_count = self.layout_workspace_count();
         let contexts = self
@@ -375,12 +469,39 @@ impl WaylandFrontend {
                 (
                     output.id,
                     self.maximize_work_area(Some(&output.output), output.logical_geometry),
+                    self.maximize_to_edges_area(Some(&output.output), output.logical_geometry),
                     scrolling_layout_axis(output.transform),
                 )
             })
             .collect::<Vec<_>>();
-        for (output, work_area, axis) in &contexts {
+        let mut preview = self.window_layout.snapshot();
+        let changed = match target.mode() {
+            LayoutDropMode::Swap => preview.swap(&window_id, &target_id),
+            LayoutDropMode::Split(direction) => {
+                let Some(space) = preview.space_for(&target_id) else {
+                    return Vec::new();
+                };
+                let Some((_, work_area, maximize_area, axis)) = contexts
+                    .iter()
+                    .find(|(output, _, _, _)| *output == space.output)
+                else {
+                    return Vec::new();
+                };
+                preview.set_maximize_area(space, *maximize_area);
+                preview.prepare_arrange(space, *work_area, gap, *axis);
+                preview.move_beside_for_preview(
+                    &window_id, &target_id, direction, *work_area, gap, *axis,
+                )
+            }
+        };
+        if !changed {
+            return Vec::new();
+        }
+        preview.activate(&window_id);
+
+        for (output, work_area, maximize_area, axis) in &contexts {
             for workspace in 1..=workspace_count {
+                preview.set_maximize_area(LayoutSpace::new(*output, workspace), *maximize_area);
                 preview.prepare_arrange(
                     LayoutSpace::new(*output, workspace),
                     *work_area,
@@ -397,7 +518,7 @@ impl WaylandFrontend {
             .collect::<HashMap<_, _>>();
         contexts
             .into_iter()
-            .flat_map(|(output, work_area, _)| {
+            .flat_map(|(output, work_area, _, _)| {
                 (1..=workspace_count).flat_map({
                     let preview = &preview;
                     move |workspace| {
@@ -624,7 +745,12 @@ impl WaylandFrontend {
             }
             return removed;
         }
+        let adopt_scrolling_maximize = self.should_adopt_scrolling_maximize(window);
         if self.window_layout.contains(&window_id) {
+            if adopt_scrolling_maximize && self.adopt_scrolling_maximize(&window_id) {
+                self.arrange_layout_windows();
+                return true;
+            }
             let minimum = self.layout_minimum_size(window);
             if self.window_layout.update_minimum_size(&window_id, minimum) {
                 self.arrange_layout_windows();
@@ -667,6 +793,9 @@ impl WaylandFrontend {
         });
         let minimum = self.layout_minimum_size(window);
         self.window_layout.update_minimum_size(&window_id, minimum);
+        if adopt_scrolling_maximize {
+            self.adopt_scrolling_maximize(&window_id);
+        }
         self.arrange_layout_windows();
         true
     }
@@ -732,12 +861,14 @@ impl WaylandFrontend {
                     .or(self.ticker_output)
                     .or_else(|| self.outputs.first().map(|output| output.id))?;
                 let space = self.layout_space_for_window(window, physical_output);
-                Some((root.id(), space, restore))
+                let adopt_scrolling_maximize = self.should_adopt_scrolling_maximize(window);
+                Some((root.id(), space, restore, adopt_scrolling_maximize))
             })
             .collect::<Vec<_>>();
         let mut previous_by_space = HashMap::<LayoutSpace, ObjectId>::new();
         let mut insertions = Vec::with_capacity(windows.len());
-        for (window, space, geometry) in windows {
+        let mut maximize_after_rebuild = Vec::new();
+        for (window, space, geometry, adopt_scrolling_maximize) in windows {
             if has_visible_size(geometry) {
                 self.layout_restore_geometries
                     .entry(window.clone())
@@ -745,12 +876,18 @@ impl WaylandFrontend {
             }
             let anchor = previous_by_space.insert(space, window.clone());
             insertions.push(LayoutInsertion {
-                window,
+                window: window.clone(),
                 space,
                 anchor,
             });
+            if adopt_scrolling_maximize {
+                maximize_after_rebuild.push(window);
+            }
         }
         self.window_layout.rebuild(insertions);
+        for window in maximize_after_rebuild {
+            self.adopt_scrolling_maximize(&window);
+        }
         self.arrange_layout_windows()
     }
 
@@ -777,6 +914,7 @@ impl WaylandFrontend {
             geometry: frame,
         } in placements
         {
+            let layout_maximized = self.window_layout.is_maximized(&window_id);
             let window = self.space.elements().find_map(|window| {
                 (self.window_root_surface(window).map(|root| root.id()) == Some(window_id.clone()))
                     .then(|| window.clone())
@@ -784,18 +922,26 @@ impl WaylandFrontend {
             let Some(window) = window else {
                 continue;
             };
-            // Fullscreen/maximized windows temporarily overlay their retained
-            // tree node. Exiting that state returns them to the next arrangement.
+            // Fullscreen and exact-geometry windows temporarily overlay their
+            // retained node. True-maximized scrolling columns remain normal
+            // participants in this placement pass.
             if self.window_has_constrained_state(&window) {
                 continue;
             }
             #[cfg(feature = "flutter")]
-            let target = shell_content_geometry(frame, super::shell_draws_server_frame(&window));
+            let target = shell_content_geometry(
+                frame,
+                super::shell_draws_server_frame(&window) && !layout_maximized,
+            );
             #[cfg(not(feature = "flutter"))]
             let target = frame;
             let previous = self.window_geometry_target(&window);
             if let Some(managed) = ManagedWindow::new(&window) {
-                managed.prepare_tiled_geometry(target, previous.size != target.size);
+                managed.prepare_tiled_geometry(
+                    target,
+                    previous.size != target.size,
+                    layout_maximized,
+                );
             }
             self.set_window_geometry_target_with_authority(
                 &window,
@@ -845,12 +991,15 @@ impl WaylandFrontend {
                 (
                     output.id,
                     self.maximize_work_area(Some(&output.output), output.logical_geometry),
+                    self.maximize_to_edges_area(Some(&output.output), output.logical_geometry),
                     scrolling_layout_axis(output.transform),
                 )
             })
             .collect::<Vec<_>>();
-        for (output, work_area, axis) in contexts {
+        for (output, work_area, maximize_area, axis) in contexts {
             for workspace in 1..=workspace_count {
+                self.window_layout
+                    .set_maximize_area(LayoutSpace::new(output, workspace), maximize_area);
                 self.window_layout.prepare_arrange(
                     LayoutSpace::new(output, workspace),
                     work_area,
@@ -987,6 +1136,37 @@ impl WaylandFrontend {
                 (facts.minimum_size, facts.maximum_size)
             },
         )
+    }
+
+    fn should_adopt_scrolling_maximize(&self, window: &Window) -> bool {
+        if self.window_layout.kind() != WindowLayoutKind::Scrolling {
+            return false;
+        }
+        let client_maximized =
+            ManagedWindow::new(window).is_some_and(|window| window.facts().client_state.maximized);
+        #[cfg(feature = "flutter")]
+        let shell_maximized = self.window_root_surface(window).is_some_and(|root| {
+            self.shell_maximize_restore_geometries
+                .contains_key(&root.id())
+        });
+        #[cfg(not(feature = "flutter"))]
+        let shell_maximized = false;
+        client_maximized || shell_maximized
+    }
+
+    fn adopt_scrolling_maximize(&mut self, window: &ObjectId) -> bool {
+        let changed = self.window_layout.set_maximized(window, true);
+        if !changed && !self.window_layout.is_maximized(window) {
+            return false;
+        }
+        #[cfg(feature = "flutter")]
+        let removed_shell_overlay = self
+            .shell_maximize_restore_geometries
+            .remove(window)
+            .is_some();
+        #[cfg(not(feature = "flutter"))]
+        let removed_shell_overlay = false;
+        changed || removed_shell_overlay
     }
 
     fn window_has_constrained_state(&self, window: &Window) -> bool {
@@ -1375,6 +1555,41 @@ mod tests {
         assert_eq!(
             touchpad_scrolling_layout_delta(100.0, 1_000, 10, 2.0),
             976.0
+        );
+    }
+
+    #[cfg(feature = "flutter")]
+    #[test]
+    fn mouse_wheel_scrolling_delta_applies_speed_and_direction() {
+        assert_eq!(
+            mouse_wheel_scrolling_layout_delta(
+                -15.0,
+                1_000,
+                10,
+                1.0,
+                ScrollingLayoutWheelUpDirection::Left,
+            ),
+            610.0
+        );
+        assert_eq!(
+            mouse_wheel_scrolling_layout_delta(
+                -15.0,
+                1_000,
+                10,
+                2.0,
+                ScrollingLayoutWheelUpDirection::Right,
+            ),
+            -1_220.0
+        );
+        assert_eq!(
+            mouse_wheel_scrolling_layout_delta(
+                7.5,
+                1_000,
+                10,
+                0.5,
+                ScrollingLayoutWheelUpDirection::Left,
+            ),
+            -152.5
         );
     }
 

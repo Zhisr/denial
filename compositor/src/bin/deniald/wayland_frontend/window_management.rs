@@ -1388,10 +1388,9 @@ fn close_window(window: &Window) -> bool {
 }
 
 #[cfg(feature = "flutter")]
-/// Atomically applies the shell-owned SUPER+Up geometry before notifying
-/// Flutter. The XDG/EWMH maximized state stays untouched, but Rust remains the
-/// placement authority throughout the transition instead of waiting for a
-/// later Flutter frame to return the requested coordinates.
+/// Applies SUPER+W maximize. Scrolling layouts use true client maximize and
+/// keep the expanded column in their strip; fixed layouts retain the legacy
+/// shell-owned overlay path.
 pub(super) fn toggle_shell_maximize_focused_toplevel(state: &mut RuntimeState) -> bool {
     if let Some(window_id) = focused_local_window(state) {
         queue_local_window_action(state, window_id, WindowAction::ToggleMaximize);
@@ -1404,10 +1403,39 @@ pub(super) fn toggle_shell_maximize_focused_toplevel(state: &mut RuntimeState) -
         .map(|window| window.facts().client_state)
         .unwrap_or_default();
 
+    let scrolling_maximize = state
+        .wayland
+        .as_ref()
+        .expect("missing Wayland frontend")
+        .window_is_scrolling_layout_managed(&window);
+    if scrolling_maximize {
+        if client.fullscreen
+            || state
+                .wayland
+                .as_ref()
+                .expect("missing Wayland frontend")
+                .window_geometry_locked(&window)
+        {
+            return true;
+        }
+        let maximized = client.maximized
+            || state
+                .wayland
+                .as_ref()
+                .expect("missing Wayland frontend")
+                .window_is_layout_maximized(&window);
+        let request = if maximized {
+            ManagedClientStateRequest::Unmaximize
+        } else {
+            ManagedClientStateRequest::Maximize
+        };
+        return apply_managed_client_state_request(state, &window, request);
+    }
+
     let (target, action) = {
         let frontend = state.wayland.as_mut().expect("missing Wayland frontend");
         if client.fullscreen || frontend.window_geometry_locked(&window) {
-            // SUPER+Up is a no-op while true fullscreen is active.
+            // SUPER+W is a no-op while true fullscreen is active.
             return true;
         }
         let Some(root_surface) = frontend.window_root_surface(&window) else {
@@ -1438,7 +1466,7 @@ pub(super) fn toggle_shell_maximize_focused_toplevel(state: &mut RuntimeState) -
                 return false;
             };
             let frame = frontend.maximize_work_area(Some(&output), output_geometry);
-            let target = shell_content_geometry(frame, shell_draws_server_frame(&window));
+            let target = shell_content_geometry(frame, false);
             frontend
                 .shell_maximize_restore_geometries
                 .insert(surface_id, restore);
@@ -1742,14 +1770,30 @@ pub(super) fn apply_managed_client_state_request(
         return true;
     }
 
-    let entering_maximize = matches!(request, ManagedClientStateRequest::Maximize);
-    if entering_maximize
+    let scrolling_layout_maximize = matches!(
+        request,
+        ManagedClientStateRequest::Maximize | ManagedClientStateRequest::Unmaximize
+    ) && state
+        .wayland
+        .as_ref()
+        .expect("missing Wayland frontend")
+        .window_is_scrolling_layout_managed(window);
+    if scrolling_layout_maximize {
+        let maximized = matches!(request, ManagedClientStateRequest::Maximize);
+        state
+            .wayland
+            .as_mut()
+            .expect("missing Wayland frontend")
+            .set_layout_window_maximized(window, maximized);
+    } else if matches!(request, ManagedClientStateRequest::Maximize)
         && state
             .wayland
             .as_ref()
             .expect("missing Wayland frontend")
             .window_is_layout_managed(window)
     {
+        // Fixed managed layouts continue rejecting client maximize rather
+        // than letting a screen-sized overlay obscure their remaining tiles.
         state
             .wayland
             .as_mut()
@@ -1821,41 +1865,63 @@ pub(super) fn apply_managed_client_state_request(
         _ => None,
     };
     let (target, fullscreen_output) = if entering {
-        let frontend = state.wayland.as_ref().expect("missing Wayland frontend");
-        let requested_output = requested_output_resource
-            .and_then(Output::from_resource)
-            .filter(|candidate| {
-                frontend
-                    .outputs
-                    .iter()
-                    .any(|entry| entry.output == *candidate)
-            });
-        let fullscreen_output = requested_output
-            .as_ref()
-            .and_then(|_| requested_output_resource.cloned());
-        let output = requested_output
-            .or_else(|| {
-                frontend.managed_layout_space(window).and_then(|space| {
+        let (output, monitor, fullscreen_output) = {
+            let frontend = state.wayland.as_ref().expect("missing Wayland frontend");
+            let requested_output = requested_output_resource
+                .and_then(Output::from_resource)
+                .filter(|candidate| {
                     frontend
                         .outputs
                         .iter()
-                        .find(|entry| entry.id == space.output)
-                        .map(|entry| entry.output.clone())
+                        .any(|entry| entry.output == *candidate)
+                });
+            let fullscreen_output = requested_output
+                .as_ref()
+                .and_then(|_| requested_output_resource.cloned());
+            let output = requested_output
+                .or_else(|| {
+                    frontend.managed_layout_space(window).and_then(|space| {
+                        frontend
+                            .outputs
+                            .iter()
+                            .find(|entry| entry.id == space.output)
+                            .map(|entry| entry.output.clone())
+                    })
                 })
-            })
-            .or_else(|| {
-                frontend
-                    .output_for_geometry(current)
-                    .map(|entry| entry.output.clone())
-            });
-        let Some(output) = output else {
-            return false;
-        };
-        let Some(monitor) = frontend.space.output_geometry(&output) else {
-            return false;
+                .or_else(|| {
+                    frontend
+                        .output_for_geometry(current)
+                        .map(|entry| entry.output.clone())
+                });
+            let Some(output) = output else {
+                return false;
+            };
+            let Some(monitor) = frontend.space.output_geometry(&output) else {
+                return false;
+            };
+            (output, monitor, fullscreen_output)
         };
         let target = if request_kind == ClientStateRequestKind::Maximize {
-            frontend.maximize_work_area(Some(&output), monitor)
+            if scrolling_layout_maximize {
+                let layout_target = state
+                    .wayland
+                    .as_mut()
+                    .expect("missing Wayland frontend")
+                    .layout_target_for_window(window);
+                layout_target.unwrap_or_else(|| {
+                    state
+                        .wayland
+                        .as_ref()
+                        .expect("missing Wayland frontend")
+                        .maximize_to_edges_area(Some(&output), monitor)
+                })
+            } else {
+                state
+                    .wayland
+                    .as_ref()
+                    .expect("missing Wayland frontend")
+                    .maximize_work_area(Some(&output), monitor)
+            }
         } else {
             monitor
         };
@@ -1945,6 +2011,13 @@ pub(super) fn apply_managed_client_state_request(
             frontend.defer_client_sized_window_placement(window);
             frontend.clear_window_geometry_intent(window);
         }
+    }
+    if scrolling_layout_maximize {
+        state
+            .wayland
+            .as_mut()
+            .expect("missing Wayland frontend")
+            .arrange_layout_windows();
     }
     #[cfg(feature = "flutter")]
     {

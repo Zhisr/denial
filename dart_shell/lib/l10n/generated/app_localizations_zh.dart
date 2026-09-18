@@ -1689,7 +1689,52 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsColorPickerDone => '完成';
 
   @override
-  String get settingsColorPickerInstructions => '拖动以选择颜色。使用方向键进行微调。';
+  String get settingsColorPickerInstructions => '可直观选择，也可输入精确的颜色值。';
+
+  @override
+  String get settingsColorInputTitle => '颜色值';
+
+  @override
+  String get settingsColorInputRgb => 'RGB';
+
+  @override
+  String get settingsColorInputHsl => 'HSL';
+
+  @override
+  String get settingsColorInputHex => 'HEX';
+
+  @override
+  String get settingsColorInputRed => '红色';
+
+  @override
+  String get settingsColorInputGreen => '绿色';
+
+  @override
+  String get settingsColorInputBlue => '蓝色';
+
+  @override
+  String get settingsColorInputHue => '色相';
+
+  @override
+  String get settingsColorInputSaturation => '饱和度';
+
+  @override
+  String get settingsColorInputLightness => '亮度';
+
+  @override
+  String get settingsColorInputHexValue => '十六进制颜色';
+
+  @override
+  String get settingsColorInputNudgeHint => '使用 ↑↓ 微调 · 按住 Shift 调整 10';
+
+  @override
+  String get settingsColorInputRgbError => 'RGB 值须在 0 到 255 之间。';
+
+  @override
+  String get settingsColorInputHslError => 'H 须为 0–360，S/L 须为 0–100。';
+
+  @override
+  String get settingsColorInputHexError => '请输入 3 位或 6 位十六进制数。';
 
   @override
   String get settingsColorPickerReset => '重置';
@@ -2443,6 +2488,25 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get settingsWindowLayoutTitle => '窗口布局';
+
+  @override
+  String get settingsScrollingLayoutWheelTitle => 'Super + 鼠标滚轮';
+
+  @override
+  String get settingsScrollingLayoutWheelDescription =>
+      '按住 Super 并滚动鼠标滚轮来移动窗口带。';
+
+  @override
+  String get settingsScrollingLayoutWheelSpeed => '滚轮速度';
+
+  @override
+  String get settingsScrollingLayoutWheelUpDirection => '滚轮向上移动';
+
+  @override
+  String get settingsScrollingLayoutWheelUpLeft => '向左';
+
+  @override
+  String get settingsScrollingLayoutWheelUpRight => '向右';
 
   @override
   String get settingsWorkspacesTitle => 'Workspaces';

@@ -725,7 +725,7 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
     }
     final binary = environment['DENIAL_SETTINGS_BINARY']?.trim();
     final executable = binary == null || binary.isEmpty
-        ? '/usr/bin/denial-settings'
+        ? 'denial-settings'
         : binary;
     ref.read(denialBridgeProvider).launchApplication(<String>[
       executable,

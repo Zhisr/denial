@@ -2461,9 +2461,69 @@
   "@settingsColorPickerDone": {
     "description": "Button label that closes the color picker."
   },
-  "settingsColorPickerInstructions": "Drag to choose a color. Use the arrow keys for fine adjustments.",
+  "settingsColorPickerInstructions": "Choose visually or enter exact color values.",
   "@settingsColorPickerInstructions": {
-    "description": "Pointer and keyboard instructions displayed below the color wheel."
+    "description": "Instructions displayed between the color wheel and exact color-value editor."
+  },
+  "settingsColorInputTitle": "Color values",
+  "@settingsColorInputTitle": {
+    "description": "Heading for exact color-value input controls."
+  },
+  "settingsColorInputRgb": "RGB",
+  "@settingsColorInputRgb": {
+    "description": "Label for RGB color-value input mode."
+  },
+  "settingsColorInputHsl": "HSL",
+  "@settingsColorInputHsl": {
+    "description": "Label for HSL color-value input mode."
+  },
+  "settingsColorInputHex": "HEX",
+  "@settingsColorInputHex": {
+    "description": "Label for hexadecimal color-value input mode."
+  },
+  "settingsColorInputRed": "Red",
+  "@settingsColorInputRed": {
+    "description": "Label for the red RGB channel input."
+  },
+  "settingsColorInputGreen": "Green",
+  "@settingsColorInputGreen": {
+    "description": "Label for the green RGB channel input."
+  },
+  "settingsColorInputBlue": "Blue",
+  "@settingsColorInputBlue": {
+    "description": "Label for the blue RGB channel input."
+  },
+  "settingsColorInputHue": "Hue",
+  "@settingsColorInputHue": {
+    "description": "Label for the HSL hue input."
+  },
+  "settingsColorInputSaturation": "Saturation",
+  "@settingsColorInputSaturation": {
+    "description": "Label for the HSL saturation input."
+  },
+  "settingsColorInputLightness": "Lightness",
+  "@settingsColorInputLightness": {
+    "description": "Label for the HSL lightness input."
+  },
+  "settingsColorInputHexValue": "Hex color",
+  "@settingsColorInputHexValue": {
+    "description": "Label for the exact hexadecimal color input."
+  },
+  "settingsColorInputNudgeHint": "Use ↑↓ to nudge · Hold Shift for 10",
+  "@settingsColorInputNudgeHint": {
+    "description": "Keyboard hint below exact color channel inputs."
+  },
+  "settingsColorInputRgbError": "Use RGB values from 0 to 255.",
+  "@settingsColorInputRgbError": {
+    "description": "Validation error for out-of-range RGB color values."
+  },
+  "settingsColorInputHslError": "Use H 0–360 and S/L 0–100.",
+  "@settingsColorInputHslError": {
+    "description": "Validation error for out-of-range HSL color values."
+  },
+  "settingsColorInputHexError": "Use 3 or 6 hex digits.",
+  "@settingsColorInputHexError": {
+    "description": "Validation error for an invalid hexadecimal color value."
   },
   "settingsColorPickerReset": "Reset",
   "@settingsColorPickerReset": {
@@ -3493,6 +3553,30 @@
   "settingsWindowLayoutTitle": "Window layout",
   "@settingsWindowLayoutTitle": {
     "description": "Title for choosing how desktop windows are arranged."
+  },
+  "settingsScrollingLayoutWheelTitle": "Super + mouse wheel",
+  "@settingsScrollingLayoutWheelTitle": {
+    "description": "Heading for mouse-wheel navigation in the scrolling window layout."
+  },
+  "settingsScrollingLayoutWheelDescription": "Hold Super and turn the mouse wheel to scroll the window strip.",
+  "@settingsScrollingLayoutWheelDescription": {
+    "description": "Explains the scrolling-layout mouse-wheel shortcut."
+  },
+  "settingsScrollingLayoutWheelSpeed": "Wheel speed",
+  "@settingsScrollingLayoutWheelSpeed": {
+    "description": "Label for the scrolling-layout mouse-wheel speed slider."
+  },
+  "settingsScrollingLayoutWheelUpDirection": "Wheel up moves",
+  "@settingsScrollingLayoutWheelUpDirection": {
+    "description": "Label for choosing the scrolling-layout direction of a wheel-up gesture."
+  },
+  "settingsScrollingLayoutWheelUpLeft": "Left",
+  "@settingsScrollingLayoutWheelUpLeft": {
+    "description": "Choice that maps mouse-wheel up to leftward scrolling-layout travel."
+  },
+  "settingsScrollingLayoutWheelUpRight": "Right",
+  "@settingsScrollingLayoutWheelUpRight": {
+    "description": "Choice that maps mouse-wheel up to rightward scrolling-layout travel."
   },
   "settingsWorkspacesTitle": "Workspaces",
   "@settingsWorkspacesTitle": {

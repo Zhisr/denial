@@ -34,6 +34,8 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
   int _lastSyncedSnapshotSequence = -1;
   double _devicePixelRatio = 1.0;
   Map<int, Rect> _workAreas = const <int, Rect>{};
+  DesktopWindowLayout _windowLayout = DesktopWindowLayout.stacking;
+  Set<int> _localFlutterWindowIds = const <int>{};
   int _workspaceTransitionSerial = 0;
 
   void syncWorkspaceConfiguration({
@@ -123,6 +125,14 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
       if (!placement.maximized || placement.fullscreen) {
         continue;
       }
+      if (_windowLayout == DesktopWindowLayout.scrolling &&
+          !_localFlutterWindowIds.contains(placement.objectId)) {
+        // Native scrolling maximize remains a tile in the strip. Rust will
+        // publish its new edge-to-edge placement after the work area changes;
+        // forcing the visible work-area rectangle here would turn it back into
+        // an overlay and prevent it from scrolling off-screen.
+        continue;
+      }
       final frame = _maximizedFrame(placement.monitorId, state.viewSize);
       if (frame != placement.frame) {
         _pendingFlutterProposedFrames[placement.objectId] = frame;
@@ -148,6 +158,7 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
     Size viewSize,
     double devicePixelRatio, {
     int snapshotSequence = 0,
+    DesktopWindowLayout windowLayout = DesktopWindowLayout.stacking,
   }) {
     if (viewSize.width <= 0.0 || viewSize.height <= 0.0) {
       return;
@@ -160,11 +171,17 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
     if (identical(windows, _lastSyncedWindows) &&
         snapshotSequence == _lastSyncedSnapshotSequence &&
         !pixelRatioChanged &&
-        state.viewSize == viewSize) {
+        state.viewSize == viewSize &&
+        _windowLayout == windowLayout) {
       return;
     }
     _lastSyncedWindows = windows;
     _lastSyncedSnapshotSequence = snapshotSequence;
+    _windowLayout = windowLayout;
+    _localFlutterWindowIds = {
+      for (final window in windows)
+        if (window.isLocalFlutter) window.objectId,
+    };
     final viewMetricsChanged = pixelRatioChanged || state.viewSize != viewSize;
     if (pixelRatioChanged) {
       _devicePixelRatio = nextPixelRatio;
@@ -201,6 +218,7 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
               : _initialFrame(
                   nativeGeometry,
                   serverSideDecorated: window.serverSideDecorated,
+                  expanded: window.maximized,
                 ),
           z: nextZ++,
           monitorId: window.monitorId,
@@ -276,6 +294,7 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
               : _initialFrame(
                   nativeGeometry,
                   serverSideDecorated: nativeServerSideDecorated,
+                  expanded: nativeMaximized,
                 );
           final pendingFrame = _pendingFlutterProposedFrames[window.objectId];
           final nativeAcknowledgedPending =
@@ -306,6 +325,7 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
           frame = _initialFrame(
             existing.contentRect,
             serverSideDecorated: nativeServerSideDecorated,
+            expanded: nativeMaximized,
           );
         }
         current = existing.copyWith(
@@ -350,8 +370,12 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
 
       final frame = current.fullscreen
           ? _clampFrame(current.frame, viewSize)
-          : current.maximized
+          : current.maximized &&
+                (_windowLayout != DesktopWindowLayout.scrolling ||
+                    _localFlutterWindowIds.contains(current.objectId))
           ? _maximizedFrame(current.monitorId, viewSize)
+          : current.maximized
+          ? current.frame
           : _clampFrame(current.frame, viewSize);
       if (frame != current.frame) {
         // A metrics change reaches Flutter before the matching native scene
@@ -856,6 +880,7 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
         ? _initialFrame(
             event.contentRect,
             serverSideDecorated: placement.serverSideDecorated,
+            expanded: placement.maximized,
           )
         : placement.frame;
     final next = Map<int, DesktopWindowPlacement>.of(state.placements);
@@ -864,7 +889,12 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
       monitorId: metadataIsNew ? event.monitorId : placement.monitorId,
       workspaceId: metadataIsNew ? event.workspaceId : placement.workspaceId,
       minimized: metadataIsNew ? false : placement.minimized,
-      maximized: metadataIsNew ? false : placement.maximized,
+      maximized:
+          metadataIsNew &&
+              (_windowLayout != DesktopWindowLayout.scrolling ||
+                  _localFlutterWindowIds.contains(objectId))
+          ? false
+          : placement.maximized,
       fullscreen: metadataIsNew ? false : placement.fullscreen,
       dragging: geometryIsNew
           ? layoutPreview
@@ -876,7 +906,10 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
                 ? event.phase != DenialWindowPlacementPhase.end
                 : placement.layoutPreviewing
           : placement.layoutPreviewing,
-      clearRestoreFrame: metadataIsNew,
+      clearRestoreFrame:
+          metadataIsNew &&
+          (_windowLayout != DesktopWindowLayout.scrolling ||
+              _localFlutterWindowIds.contains(objectId)),
       clearFullscreenRestoreFrame: metadataIsNew,
     );
     if (geometryIsNew) {
@@ -1092,8 +1125,12 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
     showPanel(DesktopPanel.none);
   }
 
-  Rect _initialFrame(Rect contentRect, {required bool serverSideDecorated}) {
-    if (!serverSideDecorated) {
+  Rect _initialFrame(
+    Rect contentRect, {
+    required bool serverSideDecorated,
+    bool expanded = false,
+  }) {
+    if (!serverSideDecorated || expanded) {
       return contentRect;
     }
     return Rect.fromLTRB(

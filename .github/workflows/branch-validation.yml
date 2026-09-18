@@ -17,6 +17,40 @@ concurrency:
   cancel-in-progress: ${{ github.ref == 'refs/heads/dev' }}
 
 jobs:
+  nix-evaluation:
+    name: Evaluate Nix package and module contracts
+    needs: authorize
+    if: >-
+      github.ref == 'refs/heads/dev'
+      || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out the exact pushed commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+        with:
+          github_access_token: ${{ github.token }}
+
+      - name: Evaluate all flake outputs
+        shell: bash
+        run: nix flake check --no-build --print-build-logs
+
+      - name: Verify source locks and module integration
+        shell: bash
+        run: >-
+          nix build
+          .#checks.x86_64-linux.locks
+          .#checks.x86_64-linux.module
+          --no-link --print-build-logs
+
   build:
     name: Build and test ${{ github.ref_name }} x86-64 candidate
     needs: authorize

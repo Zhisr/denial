@@ -70,17 +70,33 @@ impl WaylandFrontend {
             .map(|index| &self.outputs[index])
     }
 
-    /// `geometry` minus the shell system-bar strip when the given output (or,
-    /// with `output` unknown, the output whose logical rect equals `geometry`)
-    /// hosts the bar, and minus the configured maximize padding on every
-    /// bar-free edge. Mirrors the Dart shell's `DisplayLayout.workAreaOf`
-    /// so a client-requested maximize configure lands on the same rect the
-    /// shell places maximized windows into. True fullscreen keeps the full
-    /// output geometry and must not call this.
+    /// The inset working area used by ordinary managed layouts and legacy
+    /// shell-owned maximize. The system bar consumes its edge; configured
+    /// layout padding consumes every bar-free edge.
     pub(super) fn maximize_work_area(
         &self,
         output: Option<&Output>,
         geometry: Rectangle<i32, Logical>,
+    ) -> Rectangle<i32, Logical> {
+        self.output_work_area(output, geometry, true)
+    }
+
+    /// The Niri-style true-maximize area: preserve the exclusive system bar,
+    /// but ignore ordinary layout padding so the window reaches every other
+    /// output edge.
+    pub(super) fn maximize_to_edges_area(
+        &self,
+        output: Option<&Output>,
+        geometry: Rectangle<i32, Logical>,
+    ) -> Rectangle<i32, Logical> {
+        self.output_work_area(output, geometry, false)
+    }
+
+    fn output_work_area(
+        &self,
+        output: Option<&Output>,
+        geometry: Rectangle<i32, Logical>,
+        include_padding: bool,
     ) -> Rectangle<i32, Logical> {
         use crate::options::SystemBarSide;
         let bar = &self.work_area.system_bar;
@@ -105,7 +121,7 @@ impl WaylandFrontend {
             });
         let bar_side = hosts_bar.then_some(bar.side);
         let padding = self.work_area.maximize_padding;
-        let padding = if padding.is_finite() {
+        let padding = if include_padding && padding.is_finite() {
             (padding.ceil() as i32).max(0)
         } else {
             0

@@ -243,6 +243,7 @@ class _DesktopWindowFrame extends ConsumerWidget {
       windowLayout: windowLayout,
       pinned: window.pinned,
       transformed: transformed,
+      activelyDragging: placement.dragging,
       outputRect: outputRect,
     );
     final frame = desktopPixelAlignedWindowFrame(
@@ -264,7 +265,8 @@ class _DesktopWindowFrame extends ConsumerWidget {
     final minimizeEffectDuration = desktopWidgetEntering
         ? Duration.zero
         : duration;
-    final fullscreenVisual = placement.fullscreen && !transformed;
+    final fullscreenVisual =
+        (placement.fullscreen || placement.maximized) && !transformed;
     final drawsServerFrame = !fullscreenVisual && placement.serverSideDecorated;
     final theme = ShellTheme.of(context);
     final windowRadius = drawsServerFrame ? theme.windowRadius : 0.0;

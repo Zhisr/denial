@@ -708,6 +708,7 @@ class _DesktopSceneState extends ConsumerState<_DesktopScene> {
               oldWidget.windowSwitcher,
               window.objectId,
             ),
+        activelyDragging: placement.dragging,
         outputRect: desktopOutputPixelGridForMonitor(
           oldWidget.displayLayout,
           placement.monitorId,

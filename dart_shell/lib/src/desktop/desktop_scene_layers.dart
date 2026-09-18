@@ -316,6 +316,7 @@ class _DesktopPopupSurfaceLayers extends StatelessWidget {
           windowLayout: windowLayout,
           pinned: window.pinned,
           transformed: transformed,
+          activelyDragging: placement.dragging,
           outputRect: outputPixelGrid?.logicalRect,
         );
         final frame = desktopPixelAlignedWindowFrame(
@@ -330,7 +331,8 @@ class _DesktopPopupSurfaceLayers extends StatelessWidget {
           return const SizedBox.shrink();
         }
 
-        final fullscreenVisual = placement.fullscreen && !transformed;
+        final fullscreenVisual =
+            (placement.fullscreen || placement.maximized) && !transformed;
         final drawsServerFrame =
             !fullscreenVisual && placement.serverSideDecorated;
         final contentRect = drawsServerFrame

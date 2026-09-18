@@ -48,6 +48,12 @@ fn shell_document(value: Value) -> String {
         .entry("windowLayout")
         .or_insert_with(|| Value::String("stacking".to_owned()));
     layout
+        .entry("scrollingLayoutWheelSpeed")
+        .or_insert(Value::from(DEFAULT_SCROLLING_LAYOUT_WHEEL_SPEED));
+    layout
+        .entry("scrollingLayoutWheelUpDirection")
+        .or_insert_with(|| Value::String("left".to_owned()));
+    layout
         .entry("workspacesEnabled")
         .or_insert(Value::Bool(false));
     layout
@@ -82,6 +88,14 @@ fn migrates_existing_shell_document_without_losing_sections() {
     assert_eq!(document["appearance"]["allowClientCursorSurfaces"], true);
     assert_eq!(document["appearance"]["cursorSize"], DEFAULT_CURSOR_SIZE);
     assert_eq!(document["layout"]["windowLayout"], "stacking");
+    assert_eq!(
+        document["layout"]["scrollingLayoutWheelSpeed"],
+        DEFAULT_SCROLLING_LAYOUT_WHEEL_SPEED
+    );
+    assert_eq!(
+        document["layout"]["scrollingLayoutWheelUpDirection"],
+        "left"
+    );
     assert_eq!(document["layout"]["workspacesEnabled"], false);
     assert_eq!(document["layout"]["workspaceCount"], 4);
     assert_eq!(
@@ -263,6 +277,57 @@ fn window_layout_is_validated_and_persisted() {
             Err(SettingsError::Document(_))
         ));
     }
+}
+
+#[test]
+fn scrolling_layout_wheel_settings_are_validated_and_persisted() {
+    let temporary = TemporaryDirectory::new("settings-scrolling-layout-wheel");
+    let path = temporary.settings_path();
+    let mut manager = SettingsManager::load_path(path.clone()).unwrap();
+    let update = manager
+        .prepare_shell_update(
+            manager.revision(),
+            &shell_document(serde_json::json!({
+                "appearance": {"colorSchemePreference": "preferDark"},
+                "layout": {
+                    "scrollingLayoutWheelSpeed": 2.25,
+                    "scrollingLayoutWheelUpDirection": "right"
+                }
+            })),
+        )
+        .unwrap();
+    manager.commit(update).unwrap();
+
+    let configured = ScrollingLayoutWheelSettings {
+        speed: 2.25,
+        up_direction: ScrollingLayoutWheelUpDirection::Right,
+    };
+    assert_eq!(manager.scrolling_layout_wheel_settings(), configured);
+    assert_eq!(
+        SettingsManager::load_path(path)
+            .unwrap()
+            .scrolling_layout_wheel_settings(),
+        configured
+    );
+
+    for speed in [0.249, 4.001] {
+        let document = shell_document(serde_json::json!({
+            "appearance": {"colorSchemePreference": "preferDark"},
+            "layout": {"scrollingLayoutWheelSpeed": speed}
+        }));
+        assert!(matches!(
+            manager.prepare_shell_update(manager.revision(), &document),
+            Err(SettingsError::Document(_))
+        ));
+    }
+    let invalid_direction = shell_document(serde_json::json!({
+        "appearance": {"colorSchemePreference": "preferDark"},
+        "layout": {"scrollingLayoutWheelUpDirection": "up"}
+    }));
+    assert!(matches!(
+        manager.prepare_shell_update(manager.revision(), &invalid_direction),
+        Err(SettingsError::Document(_))
+    ));
 }
 
 #[test]

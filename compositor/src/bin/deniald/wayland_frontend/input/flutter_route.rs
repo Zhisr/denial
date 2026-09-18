@@ -898,10 +898,55 @@ pub(super) fn pointer_constraint_reactivation_suppressed(
     }
 }
 
+#[cfg(feature = "flutter")]
+fn route_super_scrolling_layout_wheel<E: PointerAxisEvent<LibinputInputBackend>>(
+    state: &mut RuntimeState,
+    event: &E,
+) -> bool {
+    if event.source() != AxisSource::Wheel
+        || !state.flutter_active
+        || state.secure_session_locked()
+        || !state.native_escape_shortcut.super_pressed()
+    {
+        return false;
+    }
+    let shell_owns_scene = state
+        .wayland
+        .as_ref()
+        .and_then(|frontend| frontend.input_layout.as_ref())
+        .is_some_and(InputLayoutSnapshot::exclusive_shell);
+    if shell_owns_scene {
+        return false;
+    }
+    let vertical_delta = logical_axis_scroll_delta(
+        AxisSource::Wheel,
+        event.amount(Axis::Vertical),
+        event.amount_v120(Axis::Vertical),
+        1.0,
+    );
+    if vertical_delta == 0.0
+        || !state
+            .wayland
+            .as_ref()
+            .is_some_and(WaylandFrontend::can_scroll_layout_horizontally)
+    {
+        return false;
+    }
+
+    state.native_escape_shortcut.note_pointer_axis();
+    update_mouse_wheel_layout_scroll(state, vertical_delta);
+    finish_horizontal_layout_scroll(state, false, None);
+    true
+}
+
 pub(super) fn route_pointer_axis<E: PointerAxisEvent<LibinputInputBackend>>(
     state: &mut RuntimeState,
     event: &E,
 ) {
+    #[cfg(feature = "flutter")]
+    if route_super_scrolling_layout_wheel(state, event) {
+        return;
+    }
     let source = event.source();
     let horizontal_amount = event.amount(Axis::Horizontal);
     let vertical_amount = event.amount(Axis::Vertical);
@@ -1149,11 +1194,12 @@ pub(super) fn begin_super_pointer_grab(
         .expect("missing Wayland frontend")
         .window_is_layout_managed(&window);
     if layout_managed {
-        let (position, geometry) = {
+        let (position, geometry, scrolling_resize_axis) = {
             let frontend = state.wayland.as_ref().expect("missing Wayland frontend");
             (
                 frontend.pointer_location,
                 frontend.window_geometry_target(&window),
+                frontend.scrolling_resize_axis_for_window(&window),
             )
         };
         let start_data = GrabStartData {
@@ -1192,9 +1238,11 @@ pub(super) fn begin_super_pointer_grab(
                 Focus::Clear,
             ),
             SuperPointerAction::Resize => {
+                let edges =
+                    LayoutResizeEdges::from_pointer(position, geometry, scrolling_resize_axis);
                 pointer.set_grab(
                     state,
-                    TileResizeGrab::new(start_data, window, LayoutResizeEdges::all()),
+                    TileResizeGrab::new(start_data, window, edges),
                     serial,
                     Focus::Clear,
                 );

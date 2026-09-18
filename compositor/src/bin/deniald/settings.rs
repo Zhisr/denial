@@ -23,7 +23,7 @@ use denial_core::portal_protocol::{DesktopColorSchemePreference, DesktopThemeSna
 
 use super::window_layout::WindowLayoutKind;
 
-pub(super) const SETTINGS_SCHEMA_VERSION: u64 = 27;
+pub(super) const SETTINGS_SCHEMA_VERSION: u64 = 28;
 pub(super) const MIN_WORKSPACE_COUNT: u8 = 2;
 pub(super) const MAX_WORKSPACE_COUNT: u8 = 9;
 pub(super) const DEFAULT_WORKSPACE_COUNT: u8 = 4;
@@ -47,6 +47,9 @@ const DEFAULT_TOUCHPAD_SCROLL_SPEED_FACTOR: f64 = 1.0;
 pub(super) const MIN_TOUCHPAD_SCROLLING_LAYOUT_SWIPE_SPEED_FACTOR: f64 = 0.25;
 pub(super) const MAX_TOUCHPAD_SCROLLING_LAYOUT_SWIPE_SPEED_FACTOR: f64 = 4.0;
 const DEFAULT_TOUCHPAD_SCROLLING_LAYOUT_SWIPE_SPEED_FACTOR: f64 = 1.0;
+pub(super) const MIN_SCROLLING_LAYOUT_WHEEL_SPEED: f64 = 0.25;
+pub(super) const MAX_SCROLLING_LAYOUT_WHEEL_SPEED: f64 = 4.0;
+const DEFAULT_SCROLLING_LAYOUT_WHEEL_SPEED: f64 = 1.0;
 pub(super) const MIN_MOUSE_SPEED: f64 = -1.0;
 pub(super) const MAX_MOUSE_SPEED: f64 = 1.0;
 const DEFAULT_MOUSE_SPEED: f64 = 0.0;
@@ -675,6 +678,10 @@ impl SettingsManager {
         parse_window_layout_kind(&self.document).unwrap_or_default()
     }
 
+    pub(super) fn scrolling_layout_wheel_settings(&self) -> ScrollingLayoutWheelSettings {
+        parse_scrolling_layout_wheel_settings(&self.document).unwrap_or_default()
+    }
+
     pub(super) fn workspace_settings(&self) -> WorkspaceSettings {
         parse_workspace_settings(&self.document).unwrap_or_default()
     }
@@ -743,6 +750,7 @@ impl SettingsManager {
         let allow_client_cursor_surfaces = parse_allow_client_cursor_surfaces(&incoming)?;
         parse_cursor_size(&incoming)?;
         parse_window_layout_kind(&incoming)?;
+        parse_scrolling_layout_wheel_settings(&incoming)?;
         parse_workspace_settings(&incoming)?;
         self.prepare(
             incoming,
@@ -967,6 +975,45 @@ struct ParsedSettingsDocument {
     migrated: bool,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(super) enum ScrollingLayoutWheelUpDirection {
+    #[default]
+    Left,
+    Right,
+}
+
+impl ScrollingLayoutWheelUpDirection {
+    fn from_settings_name(value: &str) -> Option<Self> {
+        match value {
+            "left" => Some(Self::Left),
+            "right" => Some(Self::Right),
+            _ => None,
+        }
+    }
+
+    fn settings_name(self) -> &'static str {
+        match self {
+            Self::Left => "left",
+            Self::Right => "right",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct ScrollingLayoutWheelSettings {
+    pub(super) speed: f64,
+    pub(super) up_direction: ScrollingLayoutWheelUpDirection,
+}
+
+impl Default for ScrollingLayoutWheelSettings {
+    fn default() -> Self {
+        Self {
+            speed: DEFAULT_SCROLLING_LAYOUT_WHEEL_SPEED,
+            up_direction: ScrollingLayoutWheelUpDirection::Left,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) struct WorkspaceSettings {
     pub(super) enabled: bool,
@@ -1090,6 +1137,19 @@ fn parse_document(bytes: &[u8]) -> Result<ParsedSettingsDocument, SettingsError>
         WindowLayoutKind::Stacking
     };
     set_window_layout_kind(&mut document, window_layout)?;
+    let had_scrolling_layout_wheel_settings = document
+        .get("layout")
+        .and_then(Value::as_object)
+        .is_some_and(|layout| {
+            layout.contains_key("scrollingLayoutWheelSpeed")
+                && layout.contains_key("scrollingLayoutWheelUpDirection")
+        });
+    let scrolling_layout_wheel_settings = if had_scrolling_layout_wheel_settings {
+        parse_scrolling_layout_wheel_settings(&document)?
+    } else {
+        ScrollingLayoutWheelSettings::default()
+    };
+    set_scrolling_layout_wheel_settings(&mut document, scrolling_layout_wheel_settings)?;
     let had_workspace_settings = document
         .get("layout")
         .and_then(Value::as_object)
@@ -1114,6 +1174,7 @@ fn parse_document(bytes: &[u8]) -> Result<ParsedSettingsDocument, SettingsError>
         || !had_allow_client_cursor_surfaces
         || !had_cursor_size
         || !had_window_layout
+        || !had_scrolling_layout_wheel_settings
         || !had_workspace_settings;
     document.insert("version".to_owned(), Value::from(SETTINGS_SCHEMA_VERSION));
     document.insert("revision".to_owned(), Value::from(revision));
@@ -1180,6 +1241,8 @@ fn default_document() -> (
     set_cursor_size(&mut document, DEFAULT_CURSOR_SIZE).expect("default cursor size serializes");
     set_window_layout_kind(&mut document, WindowLayoutKind::Stacking)
         .expect("default window layout setting serializes");
+    set_scrolling_layout_wheel_settings(&mut document, ScrollingLayoutWheelSettings::default())
+        .expect("default scrolling-layout wheel settings serialize");
     set_workspace_settings(&mut document, WorkspaceSettings::default())
         .expect("default workspace settings serialize");
     // Seed only new documents; existing automatic panel placement stays intact.
@@ -1338,6 +1401,63 @@ fn set_window_layout_kind(
     layout.insert(
         "windowLayout".to_owned(),
         Value::String(kind.settings_name().to_owned()),
+    );
+    Ok(())
+}
+
+fn parse_scrolling_layout_wheel_settings(
+    document: &Map<String, Value>,
+) -> Result<ScrollingLayoutWheelSettings, SettingsError> {
+    let layout = document
+        .get("layout")
+        .and_then(Value::as_object)
+        .ok_or_else(|| SettingsError::Document("settings layout must be an object".to_owned()))?;
+    let speed = layout
+        .get("scrollingLayoutWheelSpeed")
+        .and_then(Value::as_f64)
+        .filter(|speed| {
+            speed.is_finite()
+                && (MIN_SCROLLING_LAYOUT_WHEEL_SPEED..=MAX_SCROLLING_LAYOUT_WHEEL_SPEED)
+                    .contains(speed)
+        })
+        .ok_or_else(|| {
+            SettingsError::Document(format!(
+                "layout.scrollingLayoutWheelSpeed must be within {MIN_SCROLLING_LAYOUT_WHEEL_SPEED}..={MAX_SCROLLING_LAYOUT_WHEEL_SPEED}"
+            ))
+        })?;
+    let up_direction = layout
+        .get("scrollingLayoutWheelUpDirection")
+        .and_then(Value::as_str)
+        .and_then(ScrollingLayoutWheelUpDirection::from_settings_name)
+        .ok_or_else(|| {
+            SettingsError::Document(
+                "layout.scrollingLayoutWheelUpDirection must be left or right".to_owned(),
+            )
+        })?;
+    Ok(ScrollingLayoutWheelSettings {
+        speed,
+        up_direction,
+    })
+}
+
+fn set_scrolling_layout_wheel_settings(
+    document: &mut Map<String, Value>,
+    settings: ScrollingLayoutWheelSettings,
+) -> Result<(), SettingsError> {
+    if !document.contains_key("layout") {
+        document.insert("layout".to_owned(), Value::Object(Map::new()));
+    }
+    let layout = document
+        .get_mut("layout")
+        .and_then(Value::as_object_mut)
+        .ok_or_else(|| SettingsError::Document("settings layout must be an object".to_owned()))?;
+    layout.insert(
+        "scrollingLayoutWheelSpeed".to_owned(),
+        Value::from(settings.speed),
+    );
+    layout.insert(
+        "scrollingLayoutWheelUpDirection".to_owned(),
+        Value::String(settings.up_direction.settings_name().to_owned()),
     );
     Ok(())
 }

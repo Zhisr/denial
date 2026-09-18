@@ -1751,7 +1751,53 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsColorPickerInstructions =>
-      'Drag to choose a color. Use the arrow keys for fine adjustments.';
+      'Choose visually or enter exact color values.';
+
+  @override
+  String get settingsColorInputTitle => 'Color values';
+
+  @override
+  String get settingsColorInputRgb => 'RGB';
+
+  @override
+  String get settingsColorInputHsl => 'HSL';
+
+  @override
+  String get settingsColorInputHex => 'HEX';
+
+  @override
+  String get settingsColorInputRed => 'Red';
+
+  @override
+  String get settingsColorInputGreen => 'Green';
+
+  @override
+  String get settingsColorInputBlue => 'Blue';
+
+  @override
+  String get settingsColorInputHue => 'Hue';
+
+  @override
+  String get settingsColorInputSaturation => 'Saturation';
+
+  @override
+  String get settingsColorInputLightness => 'Lightness';
+
+  @override
+  String get settingsColorInputHexValue => 'Hex color';
+
+  @override
+  String get settingsColorInputNudgeHint =>
+      'Use ↑↓ to nudge · Hold Shift for 10';
+
+  @override
+  String get settingsColorInputRgbError => 'Use RGB values from 0 to 255.';
+
+  @override
+  String get settingsColorInputHslError => 'Use H 0–360 and S/L 0–100.';
+
+  @override
+  String get settingsColorInputHexError => 'Use 3 or 6 hex digits.';
 
   @override
   String get settingsColorPickerReset => 'Reset';
@@ -2557,6 +2603,25 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsWindowLayoutTitle => 'Window layout';
+
+  @override
+  String get settingsScrollingLayoutWheelTitle => 'Super + mouse wheel';
+
+  @override
+  String get settingsScrollingLayoutWheelDescription =>
+      'Hold Super and turn the mouse wheel to scroll the window strip.';
+
+  @override
+  String get settingsScrollingLayoutWheelSpeed => 'Wheel speed';
+
+  @override
+  String get settingsScrollingLayoutWheelUpDirection => 'Wheel up moves';
+
+  @override
+  String get settingsScrollingLayoutWheelUpLeft => 'Left';
+
+  @override
+  String get settingsScrollingLayoutWheelUpRight => 'Right';
 
   @override
   String get settingsWorkspacesTitle => 'Workspaces';

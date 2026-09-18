@@ -99,16 +99,23 @@ eligible for restoration, including new windows opened by single-instance
 applications.
 
 The Desktop Layout settings page can switch window placement between
-`stacking` and `dwindle` at runtime. Stacking preserves Denial's freely
-overlapping placement. Dwindle follows Hyprland's binary-tree model: a new
-window splits the focused tile, each parent chooses its split direction from
-its current aspect ratio, and removing a window collapses the empty branch.
+`stacking`, `dwindle`, and `scrolling` at runtime. Stacking preserves Denial's
+freely overlapping placement. Dwindle follows Hyprland's binary-tree model: a
+new window splits the focused tile, each parent chooses its split direction
+from its current aspect ratio, and removing a window collapses the empty
+branch. Scrolling arranges tiles along a focus-following strip. Hold SUPER and
+turn the mouse wheel to move along that strip; the Layout page controls the
+wheel speed and whether wheel-up moves left or right. Each scrolling column
+uses the same directional split behavior as normal tiling, so dropping a tile
+on another tile's right edge creates a horizontal split inside that column.
 The existing maximize padding is also used as the gap between sibling tiles.
 Transient dialogs, fixed-size toplevels, auxiliary X11 window types, and
-override-redirect X11 surfaces remain floating, while maximized and fullscreen
-windows temporarily cover their retained tile. Hold SUPER and left-drag a tile
-onto another tile to swap their leaves without rebuilding the tree. Switching
-back to stacking restores the windows' pre-tiling rectangles.
+override-redirect X11 surfaces remain floating. In the scrolling layout,
+maximizing expands a standalone column to the output edges while retaining it
+in the strip; fullscreen remains an overlay. Fixed layouts retain their
+existing maximize overlay behavior. Hold SUPER and left-drag a tile onto
+another tile to swap their leaves without rebuilding the tree. Switching back
+to stacking restores the windows' pre-tiling rectangles.
 
 Layout algorithms are protocol-independent implementations of `WindowLayout`
 in `src/bin/deniald/window_layout.rs`. To add one, implement that trait and add

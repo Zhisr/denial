@@ -12,6 +12,7 @@ void main() {
         windowLayout: DesktopWindowLayout.scrolling,
         pinned: false,
         transformed: false,
+        activelyDragging: false,
         outputRect: output,
       ),
       output,
@@ -24,6 +25,7 @@ void main() {
         windowLayout: DesktopWindowLayout.scrolling,
         pinned: true,
         transformed: false,
+        activelyDragging: false,
         outputRect: output,
       ),
       isNull,
@@ -36,6 +38,7 @@ void main() {
         windowLayout: DesktopWindowLayout.scrolling,
         pinned: false,
         transformed: true,
+        activelyDragging: false,
         outputRect: output,
       ),
       isNull,
@@ -45,6 +48,20 @@ void main() {
         windowLayout: DesktopWindowLayout.dwindle,
         pinned: false,
         transformed: false,
+        activelyDragging: false,
+        outputRect: output,
+      ),
+      isNull,
+    );
+  });
+
+  test('an actively dragged scrolling tile can cross output boundaries', () {
+    expect(
+      desktopScrollingOutputClip(
+        windowLayout: DesktopWindowLayout.scrolling,
+        pinned: false,
+        transformed: false,
+        activelyDragging: true,
         outputRect: output,
       ),
       isNull,
