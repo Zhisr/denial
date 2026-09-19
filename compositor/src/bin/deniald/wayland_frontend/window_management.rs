@@ -57,12 +57,10 @@ fn configured_window_size(
 // Must match DesktopMetrics.frameBorder in the embedded shell.
 pub(super) const SHELL_FRAME_BORDER: i32 = 1;
 
-#[cfg(feature = "flutter")]
 pub(super) fn shell_draws_server_frame(window: &Window) -> bool {
     ManagedWindow::new(window).is_some_and(|window| window.facts().server_side_decorated)
 }
 
-#[cfg(feature = "flutter")]
 pub(super) fn shell_content_geometry(
     mut frame: Rectangle<i32, Logical>,
     server_side_decorated: bool,
@@ -79,7 +77,6 @@ pub(super) fn shell_content_geometry(
     frame
 }
 
-#[cfg(feature = "flutter")]
 pub(super) fn maximized_shell_content_geometry(
     frame: Rectangle<i32, Logical>,
     server_side_decorated: bool,
