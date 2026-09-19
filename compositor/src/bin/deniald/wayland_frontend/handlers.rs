@@ -1001,6 +1001,13 @@ impl CompositorHandler for RuntimeState {
                     frontend.configure_mobile_window(&window);
                 }
                 frontend.reconcile_committed_window_geometry(&window);
+                if root_committed {
+                    if buffer_removed {
+                        frontend.forget_xdg_transient_window_placement(&window);
+                    } else {
+                        frontend.reconcile_xdg_transient_window_placement(&window);
+                    }
+                }
                 #[cfg(feature = "flutter")]
                 let client_sized_target = frontend.reconcile_client_sized_window_placement(&window);
                 #[cfg(feature = "flutter")]

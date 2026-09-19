@@ -280,6 +280,7 @@ class DesktopWindowPlacement {
     this.maximized = false,
     this.fullscreen = false,
     this.serverSideDecorated = true,
+    this.serverFrameWhileMaximized = false,
     this.dragging = false,
     this.layoutPreviewing = false,
     this.restoreFrame,
@@ -295,6 +296,11 @@ class DesktopWindowPlacement {
   final bool maximized;
   final bool fullscreen;
   final bool serverSideDecorated;
+
+  /// Whether the active layout keeps the shell frame around a maximized
+  /// window. Managed layouts leave breathing room around their tiles, unlike
+  /// stacking-mode maximize and true fullscreen.
+  final bool serverFrameWhileMaximized;
   final bool dragging;
 
   /// Whether this window is temporarily displaced by a managed layout drag.
@@ -302,9 +308,13 @@ class DesktopWindowPlacement {
   final Rect? restoreFrame;
   final Rect? fullscreenRestoreFrame;
 
-  double get frameBorder => fullscreen || maximized || !serverSideDecorated
-      ? 0.0
-      : DesktopMetrics.frameBorder;
+  bool get drawsLiveServerFrame =>
+      serverSideDecorated &&
+      !fullscreen &&
+      (!maximized || serverFrameWhileMaximized);
+
+  double get frameBorder =>
+      drawsLiveServerFrame ? DesktopMetrics.frameBorder : 0.0;
 
   Rect get contentRect => frame.deflate(frameBorder);
 
@@ -317,6 +327,7 @@ class DesktopWindowPlacement {
     bool? maximized,
     bool? fullscreen,
     bool? serverSideDecorated,
+    bool? serverFrameWhileMaximized,
     bool? dragging,
     bool? layoutPreviewing,
     Rect? restoreFrame,
@@ -334,6 +345,8 @@ class DesktopWindowPlacement {
       maximized: maximized ?? this.maximized,
       fullscreen: fullscreen ?? this.fullscreen,
       serverSideDecorated: serverSideDecorated ?? this.serverSideDecorated,
+      serverFrameWhileMaximized:
+          serverFrameWhileMaximized ?? this.serverFrameWhileMaximized,
       dragging: dragging ?? this.dragging,
       layoutPreviewing: layoutPreviewing ?? this.layoutPreviewing,
       restoreFrame: clearRestoreFrame
@@ -566,6 +579,7 @@ bool _desktopPlacementHasSameSceneStructure(
       left.maximized == right.maximized &&
       left.fullscreen == right.fullscreen &&
       left.serverSideDecorated == right.serverSideDecorated &&
+      left.serverFrameWhileMaximized == right.serverFrameWhileMaximized &&
       left.dragging == right.dragging &&
       left.layoutPreviewing == right.layoutPreviewing &&
       left.restoreFrame == right.restoreFrame &&

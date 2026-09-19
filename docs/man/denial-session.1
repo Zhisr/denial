@@ -20,6 +20,10 @@ an active systemd user manager, Denial activates its packaged
 .B denial-session.target
 after the compositor has published its endpoints and completed initial KMS
 presentation. That target also activates systemd's
+.B graphical-session-pre.target
+and waits for its session prerequisites before activating
+.BR graphical-session.target .
+It then activates
 .B xdg-desktop-autostart.target
 so standard XDG desktop autostart entries run only after Denial is ready. On
 other logind-compatible systems the launcher process owns the compositor
@@ -97,9 +101,16 @@ is unset, the default is
 .IR ~/.local/state .
 .TP
 .I $XDG_CONFIG_HOME/denial/settings.json
-Rust-owned per-user settings document. The Settings application submits
+Rust-managed per-user settings document. The Settings application submits
 application-environment changes through Denial's native settings bridge;
-deniald validates and atomically writes the document. String values in its
+deniald validates and atomically writes the document. Direct edits are watched
+and applied live after complete-document validation; invalid edits remain on
+disk while the last known-good settings stay active. The
+.B version
+and
+.B revision
+members are Denial-owned metadata. Deleting the file restores the defaults.
+String values in its
 .B applicationEnvironment
 default and per-application maps set variables and null values remove them.
 Per-application maps are keyed by standard desktop-file IDs and override the

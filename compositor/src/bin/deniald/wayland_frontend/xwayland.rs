@@ -32,7 +32,7 @@ use super::window_management::{
 use super::window_management::{apply_managed_minimize, queue_restored_window_state};
 use super::{
     KeyboardFocusTarget, MoveSurfaceGrab, ResizeEdges, ResizeSurfaceGrab, WindowIdentity,
-    clamp_window_geometry, constrain_dimension,
+    centered_transient_geometry, clamp_window_geometry, constrain_dimension,
 };
 
 const XWAYLAND_BASE_DPI: u32 = 96;
@@ -122,6 +122,14 @@ pub(super) fn publish_settings(
             "Gtk/CursorThemeSize".to_owned(),
             XSettingValue::Integer(i32::try_from(cursor_size).unwrap_or(i32::MAX)),
         ),
+        // XSettings is visible only to GTK's X11 backend. Publishing the XIM
+        // arm here leaves native Wayland clients on GTK's automatic context.
+        (
+            "Gtk/IMModule".to_owned(),
+            XSettingValue::String(
+                crate::settings::x11_gtk_input_method_backend_fallback().to_owned(),
+            ),
+        ),
         ("Xft/DPI".to_owned(), XSettingValue::Integer(xft_dpi)),
     ];
     #[cfg(feature = "flutter")]
@@ -193,6 +201,10 @@ fn root_surface_for_x11(surface: &X11Surface) -> Option<WlSurface> {
     surface.wl_surface()
 }
 
+fn initial_map_activates(override_redirect: bool) -> bool {
+    !override_redirect
+}
+
 fn constrain_x11_size_to_output(
     mut geometry: Rectangle<i32, Logical>,
     output: Rectangle<i32, Logical>,
@@ -224,31 +236,7 @@ fn initial_managed_x11_geometry(
         requested.size = Size::from((800, 600));
     }
     requested = constrain_x11_size_to_output(requested, output);
-    let desired = Point::<i32, Logical>::from((
-        anchor
-            .loc
-            .x
-            .saturating_add((anchor.size.w.saturating_sub(requested.size.w)) / 2),
-        anchor
-            .loc
-            .y
-            .saturating_add((anchor.size.h.saturating_sub(requested.size.h)) / 2),
-    ));
-    let max_x = output
-        .loc
-        .x
-        .saturating_add(output.size.w)
-        .saturating_sub(requested.size.w);
-    let max_y = output
-        .loc
-        .y
-        .saturating_add(output.size.h)
-        .saturating_sub(requested.size.h);
-    requested.loc = Point::from((
-        desired.x.clamp(output.loc.x, max_x),
-        desired.y.clamp(output.loc.y, max_y),
-    ));
-    requested
+    centered_transient_geometry(requested.size, anchor, output)
 }
 
 #[cfg(any(feature = "flutter", test))]
@@ -341,9 +329,14 @@ fn map_x11_window(state: &mut RuntimeState, surface: X11Surface, override_redire
                 None => (initial, None),
             }
         };
-        frontend
-            .space
-            .map_element(window.clone(), configured.loc, true);
+        // Override-redirect surfaces are client-owned popups. Mapping one may
+        // raise it visually, but must not clear the managed owner's active
+        // state or publish the popup itself as the active desktop window.
+        frontend.space.map_element(
+            window.clone(),
+            configured.loc,
+            initial_map_activates(override_redirect),
+        );
         frontend.update_window_output_membership(&window);
         if !override_redirect {
             frontend.announce_foreign_toplevel(&window);
@@ -1009,5 +1002,16 @@ impl XwmHandler for RuntimeState {
             frontend.xwm = None;
         }
         warn!("lost the Xwayland window-manager connection");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::initial_map_activates;
+
+    #[test]
+    fn override_redirect_mapping_does_not_take_activation() {
+        assert!(initial_map_activates(false));
+        assert!(!initial_map_activates(true));
     }
 }

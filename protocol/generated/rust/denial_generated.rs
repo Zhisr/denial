@@ -114,16 +114,17 @@ impl flatbuffers::SimpleToVerifyInSlice for ObjectKind {}
 #[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
 pub const ENUM_MIN_WINDOW_CONTENT_KIND: u8 = 0;
 #[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
-pub const ENUM_MAX_WINDOW_CONTENT_KIND: u8 = 5;
+pub const ENUM_MAX_WINDOW_CONTENT_KIND: u8 = 6;
 #[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
 #[allow(non_camel_case_types)]
-pub const ENUM_VALUES_WINDOW_CONTENT_KIND: [WindowContentKind; 6] = [
+pub const ENUM_VALUES_WINDOW_CONTENT_KIND: [WindowContentKind; 7] = [
   WindowContentKind::SurfaceTree,
   WindowContentKind::LocalFlutter,
   WindowContentKind::LayerShellBackground,
   WindowContentKind::LayerShellBottom,
   WindowContentKind::LayerShellTop,
   WindowContentKind::LayerShellOverlay,
+  WindowContentKind::PopupSurface,
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -137,9 +138,10 @@ impl WindowContentKind {
   pub const LayerShellBottom: Self = Self(3);
   pub const LayerShellTop: Self = Self(4);
   pub const LayerShellOverlay: Self = Self(5);
+  pub const PopupSurface: Self = Self(6);
 
   pub const ENUM_MIN: u8 = 0;
-  pub const ENUM_MAX: u8 = 5;
+  pub const ENUM_MAX: u8 = 6;
   pub const ENUM_VALUES: &'static [Self] = &[
     Self::SurfaceTree,
     Self::LocalFlutter,
@@ -147,6 +149,7 @@ impl WindowContentKind {
     Self::LayerShellBottom,
     Self::LayerShellTop,
     Self::LayerShellOverlay,
+    Self::PopupSurface,
   ];
   /// Returns the variant's name or "" if unknown.
   pub fn variant_name(self) -> Option<&'static str> {
@@ -157,6 +160,7 @@ impl WindowContentKind {
       Self::LayerShellBottom => Some("LayerShellBottom"),
       Self::LayerShellTop => Some("LayerShellTop"),
       Self::LayerShellOverlay => Some("LayerShellOverlay"),
+      Self::PopupSurface => Some("PopupSurface"),
       _ => None,
     }
   }

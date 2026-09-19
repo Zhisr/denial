@@ -1030,6 +1030,16 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String outputSoftwareDimmingSemantics(String outputName) {
+    return '$outputName software dimming';
+  }
+
+  @override
+  String outputSoftwareDimmingUnavailable(String outputName) {
+    return '$outputName software dimming (unavailable)';
+  }
+
+  @override
   String get outputVolumeSemantics => 'Output volume';
 
   @override
@@ -3505,6 +3515,15 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get wallpaperFinding => 'Finding wallpapers…';
+
+  @override
+  String wallpaperFolderHint(String directory) {
+    return 'Add your own wallpapers to $directory.';
+  }
+
+  @override
+  String get wallpaperImageServerUnavailable =>
+      'Online wallpapers are unavailable. Local wallpapers still work.';
 
   @override
   String get wallpaperMobileBackToSelection => 'Back to wallpaper selection';

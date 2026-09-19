@@ -79,6 +79,7 @@ pub(super) struct FlutterEventLoopContext<'a, 'event_loop> {
     pub(super) output_control: output_control::OutputControlPublisher,
     pub(super) portal_ipc: Option<portal_ipc::PortalIpcPublisher>,
     pub(super) wayland: Option<wayland_frontend::WaylandFrontend>,
+    pub(super) gamma_control: Arc<Mutex<gamma_control::GammaController>>,
     // The startup boundary retains ownership so an error or unwind cannot
     // destroy the engine before that boundary releases DRM master.
     pub(super) flutter: &'a mut Option<flutter_runtime::FlutterRuntime>,
@@ -107,6 +108,7 @@ pub(super) fn run_flutter_event_loop(
         output_control,
         portal_ipc,
         wayland,
+        gamma_control,
         flutter,
         flutter_launcher,
         duration,
@@ -184,6 +186,7 @@ pub(super) fn run_flutter_event_loop(
     let initial_settings_document_revision = output_control.settings_document_revision();
     let mut events = RuntimeState {
         wayland,
+        gamma_control,
         native_escape_shortcut,
         clipboard,
         system_controls,
@@ -201,6 +204,14 @@ pub(super) fn run_flutter_event_loop(
         output_control: Some(output_control.clone()),
         ..RuntimeState::default()
     };
+    if let Some(settings_path) = events
+        .wayland
+        .as_ref()
+        .map(|frontend| frontend.settings.path().to_path_buf())
+        && let Err(error) = settings_watch::install(&event_loop.handle(), &settings_path)
+    {
+        warn!(%error, path = %settings_path.display(), "could not watch Denial settings for external edits");
+    }
     let _orientation_sensor = match orientation_sensor::OrientationSensor::start() {
         Ok((sensor, source)) => {
             event_loop
@@ -295,6 +306,28 @@ pub(super) fn run_flutter_event_loop(
             scheduler.shutdown_volition();
             recover_stalled_kms_presentation(drm, event_loop, &mut events)?;
             continue;
+        }
+        let software_dimming_requests = flutter
+            .as_mut()
+            .map(|runtime| {
+                runtime
+                    .drain_software_dimming_requests()
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let gamma_reapply_requested = std::mem::take(&mut events.gamma_reapply_requested);
+        let force_gamma_reapply = events.scanout_rebased || gamma_reapply_requested;
+        let software_dimming_states = gamma_control::synchronize_gamma_control(
+            drm,
+            scanouts,
+            &mut events,
+            &software_dimming_requests,
+            force_gamma_reapply,
+        );
+        if let Some(runtime) = flutter.as_mut() {
+            for state in software_dimming_states {
+                runtime.send_software_dimming_state(state)?;
+            }
         }
         let iteration_now = Instant::now();
         if events.dpms_topology.service_deadline(iteration_now) {
@@ -1799,6 +1832,16 @@ pub(super) fn run_flutter_event_loop(
         false,
         "compositor is shutting down",
     )?;
+    if drm.is_active() {
+        let failures = events
+            .gamma_control
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .restore_all(drm);
+        for error in failures {
+            warn!(%error, "could not restore DRM gamma state during shutdown");
+        }
+    }
     quiesce_flutter_page_flips(
         flutter
             .as_mut()

@@ -1853,6 +1853,18 @@ abstract class AppLocalizations {
   /// **'{outputName} brightness'**
   String outputBrightnessSemantics(String outputName);
 
+  /// Accessible label for an output gamma-LUT dimming slider.
+  ///
+  /// In en, this message translates to:
+  /// **'{outputName} software dimming'**
+  String outputSoftwareDimmingSemantics(String outputName);
+
+  /// Label for an output that has no usable DRM gamma LUT.
+  ///
+  /// In en, this message translates to:
+  /// **'{outputName} software dimming (unavailable)'**
+  String outputSoftwareDimmingUnavailable(String outputName);
+
   /// English UI text for outputVolumeSemantics.
   ///
   /// In en, this message translates to:
@@ -6237,6 +6249,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Finding wallpapers…'**
   String get wallpaperFinding;
+
+  /// Hint identifying the folder scanned for manually added wallpapers.
+  ///
+  /// In en, this message translates to:
+  /// **'Add your own wallpapers to {directory}.'**
+  String wallpaperFolderHint(String directory);
+
+  /// Warning shown when the remote wallpaper image server cannot be reached.
+  ///
+  /// In en, this message translates to:
+  /// **'Online wallpapers are unavailable. Local wallpapers still work.'**
+  String get wallpaperImageServerUnavailable;
 
   /// Accessibility label for leaving mobile wallpaper positioning.
   ///

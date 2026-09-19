@@ -19,6 +19,32 @@ const fn layer_shell_content_kind(layer: WlrLayer) -> WindowContentKind {
 }
 
 #[cfg(feature = "flutter")]
+const fn client_surface_content_kind(x11_override_redirect: bool) -> WindowContentKind {
+    if x11_override_redirect {
+        WindowContentKind::PopupSurface
+    } else {
+        WindowContentKind::SurfaceTree
+    }
+}
+
+#[cfg(all(test, feature = "flutter"))]
+mod client_surface_content_kind_tests {
+    use super::*;
+
+    #[test]
+    fn x11_override_redirect_normalizes_to_popup_surface() {
+        assert_eq!(
+            client_surface_content_kind(true),
+            WindowContentKind::PopupSurface
+        );
+        assert_eq!(
+            client_surface_content_kind(false),
+            WindowContentKind::SurfaceTree
+        );
+    }
+}
+
+#[cfg(feature = "flutter")]
 fn surface_crop_to_buffer(
     source: Rectangle<f64, Logical>,
     scale: f64,
@@ -979,7 +1005,6 @@ impl WaylandFrontend {
             };
             let minimized = self.minimized_windows.contains(&surface.id());
             if !minimized
-                && self.workspace_location(stable_id).is_none()
                 && let Some(parent_id) = self.transient_parent_stable_id(&window)
                 && let Some(parent_location) = self.workspace_location(parent_id)
             {
@@ -1099,7 +1124,10 @@ impl WaylandFrontend {
                     opacity * window_opacity
                 },
                 surfaces: layers,
-                content_kind: WindowContentKind::SurfaceTree,
+                content_kind: client_surface_content_kind(
+                    x11.as_ref()
+                        .is_some_and(|surface| surface.is_override_redirect()),
+                ),
                 opacity_class,
             };
             if let Some(previous) = windows.get_mut(window_count) {
@@ -1533,7 +1561,7 @@ impl WaylandFrontend {
                     server_side_decorated: false,
                     opacity: 1.0,
                     surfaces: layers,
-                    content_kind: WindowContentKind::SurfaceTree,
+                    content_kind: WindowContentKind::PopupSurface,
                     opacity_class: WindowOpacityClass::ContentTranslucent,
                 };
                 if let Some(previous) = windows.get_mut(window_count) {

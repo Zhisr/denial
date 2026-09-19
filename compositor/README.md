@@ -215,6 +215,10 @@ compositor/target/release/deniald \
 With `--wayland`, the process advertises physical `wl_output` globals, XDG
 shell, SHM, `wp_viewporter` crop-and-scale support, `linux-dmabuf` v4 feedback
 for the EGL render node, and `zwlr-output-power-management-v1`. It advertises
+`wlr-gamma-control-unstable-v1` for wl-gammarelay-rs, gammastep, wlsunset, and
+other gamma-ramp clients. Denial's per-output software dimmer is composed with
+that client ramp at the CRTC, leaving captured buffers at their original
+brightness. It also advertises
 `ext-output-image-capture-source-v1`,
 `ext-foreign-toplevel-image-capture-source-v1`, and
 `ext-foreign-toplevel-list-v1` with `ext-image-copy-capture-v1` for modern

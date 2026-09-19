@@ -14,6 +14,12 @@ AE4108FA5E91E26BE0EE331E0F5B3AD16E023091
 ARM64 (AArch64) is fully supported, but first-party ARM64 binaries are not
 published yet. ARM64 users should follow the [source build guide](BUILDING.md).
 
+> [!WARNING]
+> Denial does not guarantee compatibility with systems that were originally
+> installed with KDE. KDE applications, background services, and desktop
+> integrations left by a KDE installation can cause numerous issues in a
+> Denial session.
+
 For Arch, CachyOS, Debian, Ubuntu, or Fedora, review the repository-owned
 [`install.sh`](../install.sh), then run:
 

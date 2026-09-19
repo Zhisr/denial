@@ -130,8 +130,8 @@ class _DesktopInputLayoutPublisherState
       for (final window in windows)
         if (window.isUserApp) window.objectId: window,
     };
-    final inputMethodPopups = windows
-        .where((window) => window.isInputMethodPopup && window.geometry != null)
+    final popupSurfaces = windows
+        .where((window) => window.isPopupSurface && window.geometry != null)
         .toList(growable: false);
     final switcher = source.switcher;
     final sampledSwitcherIds =
@@ -170,7 +170,7 @@ class _DesktopInputLayoutPublisherState
     // ownership while leaving a hot edge can synthesize another edge enter and
     // make the launcher repeatedly open and close over client windows.
     if (!interactions.capturesFullScene) {
-      for (final popup in inputMethodPopups) {
+      for (final popup in popupSurfaces) {
         shellRegions = _subtractFromAll(shellRegions, popup.geometry!);
       }
       for (final placement in placements) {
@@ -203,7 +203,7 @@ class _DesktopInputLayoutPublisherState
 
     final inputWindows = <InputWindowRegion>[];
     final visibleSurfaceIds = <int>{};
-    for (final popup in inputMethodPopups) {
+    for (final popup in popupSurfaces) {
       visibleSurfaceIds.addAll(popup.visibleSurfaceIds);
       if (!interactions.capturesFullScene) {
         inputWindows.add(

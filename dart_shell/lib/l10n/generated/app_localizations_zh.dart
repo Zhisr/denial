@@ -1001,6 +1001,16 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String outputSoftwareDimmingSemantics(String outputName) {
+    return '$outputName 软件调光';
+  }
+
+  @override
+  String outputSoftwareDimmingUnavailable(String outputName) {
+    return '$outputName 软件调光（不可用）';
+  }
+
+  @override
   String get outputVolumeSemantics => '输出音量';
 
   @override
@@ -2441,27 +2451,25 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsShortcutActionSwapDown => '向下交换窗口';
 
   @override
-  String get settingsShortcutActionPreviousWorkspace => 'Previous workspace';
+  String get settingsShortcutActionPreviousWorkspace => '上一个工作区';
 
   @override
-  String get settingsShortcutActionNextWorkspace => 'Next workspace';
+  String get settingsShortcutActionNextWorkspace => '下一个工作区';
 
   @override
-  String get settingsShortcutActionMoveToPreviousWorkspace =>
-      'Move window to previous workspace';
+  String get settingsShortcutActionMoveToPreviousWorkspace => '将窗口移至上一个工作区';
 
   @override
-  String get settingsShortcutActionMoveToNextWorkspace =>
-      'Move window to next workspace';
+  String get settingsShortcutActionMoveToNextWorkspace => '将窗口移至下一个工作区';
 
   @override
   String settingsShortcutActionSwitchWorkspace(int workspace) {
-    return 'Switch to workspace $workspace';
+    return '切换到工作区 $workspace';
   }
 
   @override
   String settingsShortcutActionMoveToWorkspace(int workspace) {
-    return 'Move window to workspace $workspace';
+    return '将窗口移至工作区 $workspace';
   }
 
   @override
@@ -3346,6 +3354,14 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get wallpaperFinding => '正在查找壁纸…';
+
+  @override
+  String wallpaperFolderHint(String directory) {
+    return '将您自己的壁纸添加到 $directory。';
+  }
+
+  @override
+  String get wallpaperImageServerUnavailable => '在线壁纸不可用。本地壁纸仍可使用。';
 
   @override
   String get wallpaperMobileBackToSelection => '返回壁纸选择';

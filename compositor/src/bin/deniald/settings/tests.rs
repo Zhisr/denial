@@ -437,6 +437,108 @@ fn rejects_external_edits_before_commit() {
 }
 
 #[test]
+fn reloads_external_edit_with_an_authoritative_revision() {
+    let temporary = TemporaryDirectory::new("settings-external-reload");
+    let path = temporary.settings_path();
+    let mut manager = SettingsManager::load_path(path.clone()).unwrap();
+    let old_revision = manager.revision();
+    let external_edit = shell_document(serde_json::json!({
+        "revision": 9000,
+        "appearance": {
+            "colorSchemePreference": "preferLight",
+            "cursorSize": 48
+        },
+        "externalEditorMarker": true
+    }));
+    fs::write(&path, format!("{external_edit}\n")).unwrap();
+
+    let prepared = manager
+        .prepare_external_reload()
+        .unwrap()
+        .expect("external bytes should produce a transaction");
+    manager.commit(prepared).unwrap();
+
+    assert_eq!(manager.revision(), old_revision + 1);
+    assert_eq!(manager.cursor_size(), 48);
+    let document: Value = serde_json::from_str(&manager.document_json().unwrap()).unwrap();
+    assert_eq!(document["revision"], old_revision + 1);
+    assert_eq!(
+        document["appearance"]["colorSchemePreference"],
+        "preferLight"
+    );
+    assert_eq!(document["externalEditorMarker"], true);
+    assert!(manager.prepare_external_reload().unwrap().is_none());
+
+    let update = manager
+        .prepare_mouse_update(manager.revision(), MouseSettings { speed: 0.25 })
+        .unwrap();
+    manager.commit(update).unwrap();
+}
+
+#[test]
+fn external_removal_restores_and_recreates_defaults() {
+    let temporary = TemporaryDirectory::new("settings-external-removal");
+    let path = temporary.settings_path();
+    let mut manager = SettingsManager::load_path(path.clone()).unwrap();
+    let update = manager
+        .prepare_mouse_update(manager.revision(), MouseSettings { speed: 0.75 })
+        .unwrap();
+    manager.commit(update).unwrap();
+    let old_revision = manager.revision();
+    fs::remove_file(&path).unwrap();
+
+    let prepared = manager
+        .prepare_external_reload()
+        .unwrap()
+        .expect("removal should produce a default-settings transaction");
+    manager.commit(prepared).unwrap();
+
+    assert_eq!(manager.revision(), old_revision + 1);
+    assert_eq!(manager.mouse(), &MouseSettings::default());
+    assert!(path.is_file());
+}
+
+#[test]
+fn invalid_external_edit_stays_on_disk_without_changing_live_state() {
+    let temporary = TemporaryDirectory::new("settings-invalid-external-reload");
+    let path = temporary.settings_path();
+    let manager = SettingsManager::load_path(path.clone()).unwrap();
+    let old_revision = manager.revision();
+    fs::write(&path, b"{ invalid json\n").unwrap();
+
+    assert!(matches!(
+        manager.prepare_external_reload(),
+        Err(SettingsError::Json(_))
+    ));
+    assert_eq!(manager.revision(), old_revision);
+    assert_eq!(fs::read(&path).unwrap(), b"{ invalid json\n");
+}
+
+#[test]
+fn rejects_a_second_external_edit_during_reload() {
+    let temporary = TemporaryDirectory::new("settings-external-reload-race");
+    let path = temporary.settings_path();
+    let mut manager = SettingsManager::load_path(path.clone()).unwrap();
+    let first = shell_document(serde_json::json!({
+        "appearance": {"colorSchemePreference": "preferLight"}
+    }));
+    fs::write(&path, format!("{first}\n")).unwrap();
+    let prepared = manager
+        .prepare_external_reload()
+        .unwrap()
+        .expect("first external edit should prepare");
+    let second = shell_document(serde_json::json!({
+        "appearance": {"colorSchemePreference": "noPreference"}
+    }));
+    fs::write(&path, format!("{second}\n")).unwrap();
+
+    assert!(matches!(
+        manager.commit(prepared),
+        Err(SettingsError::Conflict)
+    ));
+}
+
+#[test]
 fn rejects_symlink_target() {
     let temporary = TemporaryDirectory::new("settings-symlink");
     let path = temporary.settings_path();
@@ -516,4 +618,28 @@ fn validates_application_environment_before_writing() {
             Err(SettingsError::Document(_))
         ));
     }
+}
+
+#[test]
+fn gtk_input_method_policy_is_split_by_display_backend() {
+    fn environment(value: serde_json::Value) -> ApplicationEnvironment {
+        let document = serde_json::json!({"applicationEnvironment": value});
+        ApplicationEnvironment::from_document(document.as_object().unwrap()).unwrap()
+    }
+
+    assert_eq!(GTK_INPUT_METHOD_BACKEND_FALLBACK, "wayland:xim");
+    assert_eq!(x11_gtk_input_method_backend_fallback(), "xim");
+
+    let configured = environment(serde_json::json!({
+        "default": {"XMODIFIERS": "@im=fcitx"},
+        "applications": {}
+    }));
+    let mut command = Command::new("true");
+    configured.apply(&mut command, None, None);
+    let child_environment = command.get_envs().collect::<BTreeMap<_, _>>();
+    assert_eq!(
+        child_environment.get(OsStr::new("XMODIFIERS")),
+        Some(&Some(OsStr::new("@im=fcitx")))
+    );
+    assert!(!child_environment.contains_key(OsStr::new("GTK_IM_MODULE")));
 }

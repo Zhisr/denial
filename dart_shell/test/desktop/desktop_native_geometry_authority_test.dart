@@ -11,6 +11,7 @@ DenialWindow nativeWindow({
   required Rect geometry,
   required bool fullscreen,
   bool maximized = false,
+  DenialWindowContentKind contentKind = DenialWindowContentKind.surfaceTree,
 }) {
   return DenialWindow(
     objectId: 7,
@@ -39,6 +40,7 @@ DenialWindow nativeWindow({
     fullscreen: fullscreen,
     transform: 0,
     scale120: 120,
+    contentKind: contentKind,
   );
 }
 
@@ -102,15 +104,38 @@ void main() {
     );
   }
 
+  test('popup surfaces never enter the desktop placement stack', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final workspace = container.read(desktopWorkspaceProvider.notifier);
+
+    workspace.syncWindows(
+      <DenialWindow>[
+        nativeWindow(
+          objectKind: 'x11',
+          geometry: const Rect.fromLTWH(240, 180, 320, 72),
+          fullscreen: false,
+          contentKind: DenialWindowContentKind.popupSurface,
+        ),
+      ],
+      const Size(1920, 1080),
+      1,
+      snapshotSequence: 12,
+    );
+
+    expect(container.read(desktopWorkspaceProvider).placements, isEmpty);
+  });
+
   test('scrolling maximize keeps native off-screen strip geometry', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);
     final workspace = container.read(desktopWorkspaceProvider.notifier);
     const viewSize = Size(1920, 1080);
-    const maximizedGeometry = Rect.fromLTWH(8, 40, 1904, 1032);
+    const maximizedFrame = Rect.fromLTWH(8, 40, 1904, 1032);
+    const maximizedContent = Rect.fromLTWH(9, 41, 1902, 1030);
     final maximized = nativeWindow(
       objectKind: 'xdg',
-      geometry: maximizedGeometry,
+      geometry: maximizedContent,
       fullscreen: false,
       maximized: true,
     );
@@ -127,17 +152,18 @@ void main() {
     });
     expect(
       container.read(desktopWorkspaceProvider).placements[7]!.frame,
-      maximizedGeometry,
+      maximizedFrame,
     );
 
-    const scrolledGeometry = Rect.fromLTWH(-1906, 40, 1904, 1032);
+    const scrolledContent = Rect.fromLTWH(-1905, 41, 1902, 1030);
+    const scrolledFrame = Rect.fromLTWH(-1906, 40, 1904, 1032);
     expect(
       workspace.applyNativePlacement(
         7,
         const DenialWindowPlacementEvent(
           sequence: 21,
           windowId: 27,
-          contentRect: scrolledGeometry,
+          contentRect: scrolledContent,
           monitorId: 1,
           workspaceId: 1,
           phase: DenialWindowPlacementPhase.update,
@@ -148,8 +174,63 @@ void main() {
     );
     final placement = container.read(desktopWorkspaceProvider).placements[7]!;
     expect(placement.maximized, isTrue);
-    expect(placement.frame, scrolledGeometry);
+    expect(placement.frame, scrolledFrame);
+    expect(placement.contentRect, scrolledContent);
+    expect(placement.drawsLiveServerFrame, isTrue);
+    expect(placement.frameBorder, DesktopMetrics.frameBorder);
+  });
+
+  test('stacking maximize remains frameless', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final workspace = container.read(desktopWorkspaceProvider.notifier);
+    const geometry = Rect.fromLTWH(8, 40, 1904, 1032);
+
+    workspace.syncWindows(
+      <DenialWindow>[
+        nativeWindow(
+          objectKind: 'xdg',
+          geometry: geometry,
+          fullscreen: false,
+          maximized: true,
+        ),
+      ],
+      const Size(1920, 1080),
+      1,
+      snapshotSequence: 25,
+    );
+
+    final placement = container.read(desktopWorkspaceProvider).placements[7]!;
+    expect(placement.frame, geometry);
+    expect(placement.drawsLiveServerFrame, isFalse);
     expect(placement.frameBorder, 0);
+  });
+
+  test('dwindle maximize keeps the rounded server frame', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final workspace = container.read(desktopWorkspaceProvider.notifier);
+    const content = Rect.fromLTWH(9, 41, 1902, 1030);
+
+    workspace.syncWindows(
+      <DenialWindow>[
+        nativeWindow(
+          objectKind: 'xdg',
+          geometry: content,
+          fullscreen: false,
+          maximized: true,
+        ),
+      ],
+      const Size(1920, 1080),
+      1,
+      snapshotSequence: 26,
+      windowLayout: DesktopWindowLayout.dwindle,
+    );
+
+    final placement = container.read(desktopWorkspaceProvider).placements[7]!;
+    expect(placement.frame, const Rect.fromLTWH(8, 40, 1904, 1032));
+    expect(placement.contentRect, content);
+    expect(placement.drawsLiveServerFrame, isTrue);
   });
 
   test('only a begun move marks a scrolling tile as actively dragged', () {

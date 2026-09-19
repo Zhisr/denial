@@ -6,6 +6,7 @@
 
 use std::collections::BTreeMap;
 use std::error::Error;
+use std::ffi::OsStr;
 use std::fmt;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
@@ -57,6 +58,17 @@ const MIN_CURSOR_SIZE: u32 = 16;
 pub(super) const DEFAULT_CURSOR_SIZE: u32 = 32;
 const MAX_CURSOR_SIZE: u32 = 64;
 static SETTINGS_TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+// This is a backend policy, not a literal GTK_IM_MODULE value. GTK's Wayland
+// backend chooses its built-in input context automatically; Denial publishes
+// the X11 arm through XSettings so an Xwayland GTK client sees only `xim`.
+const GTK_INPUT_METHOD_BACKEND_FALLBACK: &str = "wayland:xim";
+
+pub(super) fn x11_gtk_input_method_backend_fallback() -> &'static str {
+    GTK_INPUT_METHOD_BACKEND_FALLBACK
+        .split_once(':')
+        .map(|(_, x11_backend)| x11_backend)
+        .expect("GTK input-method backend fallback must contain Wayland and X11 arms")
+}
 
 /// Environment overrides applied only to processes launched by Denial.
 ///
@@ -147,13 +159,37 @@ impl ApplicationEnvironment {
         );
     }
 
-    pub(super) fn apply(&self, command: &mut Command, desktop_file_id: Option<&str>) {
+    pub(super) fn allows_discovered_xmodifiers(&self, desktop_file_id: Option<&str>) -> bool {
+        self.override_for("XMODIFIERS", desktop_file_id).is_none()
+            && std::env::var_os("XMODIFIERS").is_none()
+    }
+
+    pub(super) fn apply(
+        &self,
+        command: &mut Command,
+        desktop_file_id: Option<&str>,
+        discovered_xmodifiers: Option<&OsStr>,
+    ) {
+        let inherited_xmodifiers = std::env::var_os("XMODIFIERS");
         apply_environment_overrides(command, &self.default_overrides);
         if let Some(overrides) = desktop_file_id
             .and_then(|desktop_file_id| self.application_overrides.get(desktop_file_id))
         {
             apply_environment_overrides(command, overrides);
         }
+        if self.override_for("XMODIFIERS", desktop_file_id).is_none()
+            && inherited_xmodifiers.is_none()
+            && let Some(discovered_xmodifiers) = discovered_xmodifiers
+        {
+            command.env("XMODIFIERS", discovered_xmodifiers);
+        }
+    }
+
+    fn override_for(&self, name: &str, desktop_file_id: Option<&str>) -> Option<&Option<String>> {
+        desktop_file_id
+            .and_then(|desktop_file_id| self.application_overrides.get(desktop_file_id))
+            .and_then(|overrides| overrides.get(name))
+            .or_else(|| self.default_overrides.get(name))
     }
 }
 
@@ -831,6 +867,77 @@ impl SettingsManager {
         )
     }
 
+    /// Builds a normal settings transaction from a document changed outside
+    /// deniald. The revision stored in an editor's copy is deliberately
+    /// ignored: revisions serialize live writers, so only the active manager
+    /// may allocate the next one.
+    ///
+    /// Removing the document is treated as restoring defaults. Invalid files
+    /// remain untouched and the caller keeps the last known-good live state.
+    pub(super) fn prepare_external_reload(
+        &self,
+    ) -> Result<Option<PreparedSettingsUpdate>, SettingsError> {
+        let observed = read_settings_file(&self.path)?;
+        if observed == self.persisted_bytes {
+            return Ok(None);
+        }
+
+        let (
+            mut document,
+            keyboard,
+            mouse,
+            touchpad,
+            color_scheme_preference,
+            allow_client_cursor_surfaces,
+        ) = match observed.as_deref() {
+            Some(bytes) => {
+                let parsed = parse_document(bytes)?;
+                (
+                    parsed.document,
+                    parsed.keyboard,
+                    parsed.mouse,
+                    parsed.touchpad,
+                    parsed.color_scheme_preference,
+                    parsed.allow_client_cursor_surfaces,
+                )
+            }
+            None => {
+                let (
+                    document,
+                    _,
+                    keyboard,
+                    mouse,
+                    touchpad,
+                    color_scheme_preference,
+                    allow_client_cursor_surfaces,
+                ) = default_document();
+                (
+                    document,
+                    keyboard,
+                    mouse,
+                    touchpad,
+                    color_scheme_preference,
+                    allow_client_cursor_surfaces,
+                )
+            }
+        };
+        // Grammar validation is not enough for an external keymap edit. Do
+        // the installed-XKB preflight before any live input state is changed.
+        keyboard.compiled_layout_names()?;
+        document.insert("version".to_owned(), Value::from(SETTINGS_SCHEMA_VERSION));
+        document.insert("revision".to_owned(), Value::from(self.next_revision()?));
+        self.prepare_against(
+            document,
+            keyboard,
+            mouse,
+            touchpad,
+            color_scheme_preference,
+            allow_client_cursor_surfaces,
+            observed,
+        )
+        .map(Some)
+    }
+
     pub(super) fn commit(
         &mut self,
         mut prepared: PreparedSettingsUpdate,
@@ -840,7 +947,7 @@ impl SettingsManager {
                 "prepared settings target does not match the active store".to_owned(),
             ));
         }
-        if read_settings_file(&self.path)? != self.persisted_bytes {
+        if read_settings_file(&self.path)? != prepared.expected_disk_bytes {
             return Err(SettingsError::Conflict);
         }
         fs::rename(&prepared.temporary, &self.path)?;
@@ -881,12 +988,33 @@ impl SettingsManager {
 
     fn prepare(
         &self,
+        document: Map<String, Value>,
+        keyboard: KeyboardSettings,
+        mouse: MouseSettings,
+        touchpad: TouchpadSettings,
+        color_scheme_preference: DesktopColorSchemePreference,
+        allow_client_cursor_surfaces: bool,
+    ) -> Result<PreparedSettingsUpdate, SettingsError> {
+        self.prepare_against(
+            document,
+            keyboard,
+            mouse,
+            touchpad,
+            color_scheme_preference,
+            allow_client_cursor_surfaces,
+            self.persisted_bytes.clone(),
+        )
+    }
+
+    fn prepare_against(
+        &self,
         mut document: Map<String, Value>,
         keyboard: KeyboardSettings,
         mouse: MouseSettings,
         touchpad: TouchpadSettings,
         color_scheme_preference: DesktopColorSchemePreference,
         allow_client_cursor_surfaces: bool,
+        expected_disk_bytes: Option<Vec<u8>>,
     ) -> Result<PreparedSettingsUpdate, SettingsError> {
         let application_environment = ApplicationEnvironment::from_document(&document)?;
         application_environment.write_to_document(&mut document);
@@ -907,6 +1035,7 @@ impl SettingsManager {
             color_scheme_preference,
             allow_client_cursor_surfaces,
             bytes,
+            expected_disk_bytes,
             committed: false,
         })
     }
@@ -938,6 +1067,7 @@ pub(super) struct PreparedSettingsUpdate {
     color_scheme_preference: DesktopColorSchemePreference,
     allow_client_cursor_surfaces: bool,
     bytes: Vec<u8>,
+    expected_disk_bytes: Option<Vec<u8>>,
     committed: bool,
 }
 

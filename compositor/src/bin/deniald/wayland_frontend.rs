@@ -141,6 +141,8 @@ mod focus;
 #[cfg(feature = "flutter")]
 #[path = "wayland_frontend/frame_timeline.rs"]
 mod frame_timeline;
+#[path = "wayland_frontend/gamma_control.rs"]
+mod gamma_control;
 #[path = "wayland_frontend/handlers.rs"]
 mod handlers;
 #[cfg(feature = "flutter")]
@@ -230,8 +232,8 @@ use surface_snapshot::{rgba_payload_len, shm_cache_budget_for_atlas, snapshot_sh
 use text_input::{SeatFocusKind, TextInputManager};
 pub(super) use topology::saturating_point_add;
 use topology::{
-    choose_popup_output, clamp_window_geometry, configure_output, output_logical_bounds,
-    saturating_point_sub,
+    centered_transient_geometry, choose_popup_output, clamp_window_geometry, configure_output,
+    output_logical_bounds, saturating_point_sub,
 };
 use window_management::SHELL_FRAME_BORDER;
 #[cfg(feature = "flutter")]
@@ -240,7 +242,9 @@ pub(super) use window_management::{
     queue_window_placement,
 };
 #[cfg(feature = "flutter")]
-use window_management::{shell_content_geometry, shell_draws_server_frame};
+use window_management::{
+    maximized_shell_content_geometry, shell_content_geometry, shell_draws_server_frame,
+};
 
 const MAX_PENDING_DMABUF_IMPORTS: usize = 128;
 const XDG_ACTIVATION_TOKEN_LIFETIME: Duration = Duration::from_secs(10);
@@ -590,6 +594,10 @@ pub(super) struct WaylandFrontend {
     restored_window_positions: HashSet<ObjectId>,
     client_geometry_state_requests: HashSet<ObjectId>,
     pending_client_sized_placements: HashMap<ObjectId, PendingClientSizedPlacement>,
+    /// Parent association for each XDG transient whose initial client-sized
+    /// geometry has already been placed. A changed parent creates one new
+    /// placement; ordinary buffer commits never recenter a dialog.
+    placed_transient_parents: HashMap<ObjectId, ObjectId>,
     pub _output_manager_state: OutputManagerState,
     pub seat_state: SeatState<RuntimeState>,
     pub data_device_state: DataDeviceState,
@@ -614,6 +622,7 @@ pub(super) struct WaylandFrontend {
     #[cfg(feature = "flutter")]
     idle_inhibition_cached: bool,
     output_power: OutputPowerManager,
+    gamma_control: gamma_control::GammaControlManager,
     screencopy: screencopy::ScreencopyManager,
     text_input: TextInputManager,
     input_method: InputMethodManager,

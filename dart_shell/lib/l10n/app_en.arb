@@ -1505,6 +1505,24 @@
       }
     }
   },
+  "outputSoftwareDimmingSemantics": "{outputName} software dimming",
+  "@outputSoftwareDimmingSemantics": {
+    "description": "Accessible label for an output gamma-LUT dimming slider.",
+    "placeholders": {
+      "outputName": {
+        "type": "String"
+      }
+    }
+  },
+  "outputSoftwareDimmingUnavailable": "{outputName} software dimming (unavailable)",
+  "@outputSoftwareDimmingUnavailable": {
+    "description": "Label for an output that has no usable DRM gamma LUT.",
+    "placeholders": {
+      "outputName": {
+        "type": "String"
+      }
+    }
+  },
   "outputVolumeSemantics": "Output volume",
   "@outputVolumeSemantics": {
     "description": "English UI text for outputVolumeSemantics."
@@ -4737,6 +4755,19 @@
   "wallpaperFinding": "Finding wallpapers…",
   "@wallpaperFinding": {
     "description": "English UI text for wallpaperFinding."
+  },
+  "wallpaperFolderHint": "Add your own wallpapers to {directory}.",
+  "@wallpaperFolderHint": {
+    "description": "Hint identifying the folder scanned for manually added wallpapers.",
+    "placeholders": {
+      "directory": {
+        "type": "String"
+      }
+    }
+  },
+  "wallpaperImageServerUnavailable": "Online wallpapers are unavailable. Local wallpapers still work.",
+  "@wallpaperImageServerUnavailable": {
+    "description": "Warning shown when the remote wallpaper image server cannot be reached."
   },
   "wallpaperMobileBackToSelection": "Back to wallpaper selection",
   "@wallpaperMobileBackToSelection": {

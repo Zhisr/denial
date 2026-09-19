@@ -541,6 +541,9 @@ pub(super) fn run(options: Options) -> Result<(), Box<dyn Error>> {
                         ControlEvent::SystemControl(request) => {
                             state.pending_system_controls.push_back(request);
                         }
+                        ControlEvent::SoftwareDimming(request) => {
+                            state.pending_software_dimming.push_back(request);
+                        }
                         ControlEvent::UiDevelopment(request) => {
                             state.pending_ui_development.push_back(request);
                         }
@@ -616,6 +619,7 @@ pub(super) fn run(options: Options) -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
+    let gamma_control = Arc::new(Mutex::new(gamma_control::GammaController::default()));
     let mut graphical_session_started = false;
     let runtime_outcome = catch_unwind(AssertUnwindSafe(|| -> Result<_, Box<dyn Error>> {
         for scanout in &kms.scanouts {
@@ -679,6 +683,7 @@ pub(super) fn run(options: Options) -> Result<(), Box<dyn Error>> {
                         .publisher(),
                     portal_ipc: portal_ipc_server.as_ref().map(PortalIpcServer::publisher),
                     wayland,
+                    gamma_control: Arc::clone(&gamma_control),
                     flutter: &mut flutter,
                     flutter_launcher: flutter_launcher
                         .as_mut()
@@ -703,6 +708,7 @@ pub(super) fn run(options: Options) -> Result<(), Box<dyn Error>> {
                 scanouts: &mut kms.scanouts,
                 restore_state: &mut restore_state,
                 wayland,
+                gamma_control: Arc::clone(&gamma_control),
                 #[cfg(feature = "flutter")]
                 flutter: flutter.take(),
                 #[cfg(feature = "flutter")]
@@ -746,6 +752,14 @@ pub(super) fn run(options: Options) -> Result<(), Box<dyn Error>> {
         .copied()
         .unwrap_or_else(|| swapchains.representative_framebuffer());
 
+    let gamma_restore_failures = if kms.drm.is_active() {
+        gamma_control
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .restore_all(&kms.drm)
+    } else {
+        Vec::new()
+    };
     if runtime_limit == RuntimeLimit::UntilLogout {
         // This is the last-resort teardown boundary for a real login session.
         // The orderly path already drains pending flips and releases master,
@@ -758,7 +772,8 @@ pub(super) fn run(options: Options) -> Result<(), Box<dyn Error>> {
     }
     let restore = kms.restore_once(&restore_state, current_fb);
     let restored = restore.restored;
-    let restore_failures = restore.failures;
+    let mut restore_failures = restore.failures;
+    restore_failures.extend(gamma_restore_failures);
 
     if graphical_session_started && let Err(error) = stop_systemd_graphical_session() {
         warn!(%error, "could not stop the Denial graphical-session target");

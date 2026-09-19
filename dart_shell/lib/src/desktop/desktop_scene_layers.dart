@@ -70,6 +70,48 @@ Offset _entryDirectionFor(int horizontal, int vertical) {
   return Offset.zero;
 }
 
+/// Owns overview input while keeping wallpaper-plane controls interactive.
+///
+/// The full-scene region transfers native pointer ownership to Flutter. The
+/// dismissal barrier then handles otherwise-unclaimed taps, while controls
+/// painted after it (such as the workspace indicator and system tray) win
+/// Flutter hit testing inside their own bounds.
+class DesktopOverviewInputLayer extends StatelessWidget {
+  const DesktopOverviewInputLayer({
+    required this.active,
+    required this.onBarrierTap,
+    required this.foregroundControls,
+    super.key,
+  });
+
+  final bool active;
+  final ValueChanged<Offset> onBarrierTap;
+  final List<Widget> foregroundControls;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: <Widget>[
+        Positioned.fill(
+          child: ShellInputRegion(
+            debugLabel: 'Desktop overview',
+            active: active,
+            pointerPolicy: ShellPointerPolicy.fullScene,
+            keyboardPolicy: ShellKeyboardPolicy.capture,
+            compositorPolicy: ShellCompositorPolicy.exclusive,
+            child: const IgnorePointer(child: SizedBox.expand()),
+          ),
+        ),
+        Positioned.fill(
+          child: _DesktopOverviewBarrier(active: active, onTap: onBarrierTap),
+        ),
+        ...foregroundControls,
+      ],
+    );
+  }
+}
+
 class _DesktopOverviewBarrier extends StatelessWidget {
   const _DesktopOverviewBarrier({required this.active, required this.onTap});
 
@@ -323,10 +365,9 @@ class _DesktopPopupSurfaceLayers extends StatelessWidget {
           return const SizedBox.shrink();
         }
 
-        final fullscreenVisual =
-            (placement.fullscreen || placement.maximized) && !transformed;
-        final drawsServerFrame =
-            !fullscreenVisual && placement.serverSideDecorated;
+        final drawsServerFrame = transformed
+            ? placement.serverSideDecorated
+            : placement.drawsLiveServerFrame;
         final contentRect = drawsServerFrame
             ? frame.deflate(DesktopMetrics.frameBorder)
             : frame;

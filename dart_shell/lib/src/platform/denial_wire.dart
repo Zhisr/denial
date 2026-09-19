@@ -1347,6 +1347,8 @@ class DenialWireCodec {
           DenialWindowContentKind.layerShellTop,
         generated.WindowContentKind.LayerShellOverlay =>
           DenialWindowContentKind.layerShellOverlay,
+        generated.WindowContentKind.PopupSurface =>
+          DenialWindowContentKind.popupSurface,
       };
       if (contentKind == DenialWindowContentKind.localFlutter &&
           (window.textureId != 0 || sourceLayers.isNotEmpty)) {

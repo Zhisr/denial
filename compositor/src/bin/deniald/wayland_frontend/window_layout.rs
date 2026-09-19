@@ -169,8 +169,7 @@ impl WaylandFrontend {
             .into_iter()
             .find_map(|placement| (placement.window == window_id).then_some(placement.geometry))?;
         #[cfg(feature = "flutter")]
-        let draw_frame =
-            super::shell_draws_server_frame(window) && !self.window_layout.is_maximized(&window_id);
+        let draw_frame = super::shell_draws_server_frame(window);
         #[cfg(feature = "flutter")]
         return Some(shell_content_geometry(frame, draw_frame));
         #[cfg(not(feature = "flutter"))]
@@ -929,10 +928,7 @@ impl WaylandFrontend {
                 continue;
             }
             #[cfg(feature = "flutter")]
-            let target = shell_content_geometry(
-                frame,
-                super::shell_draws_server_frame(&window) && !layout_maximized,
-            );
+            let target = shell_content_geometry(frame, super::shell_draws_server_frame(&window));
             #[cfg(not(feature = "flutter"))]
             let target = frame;
             let previous = self.window_geometry_target(&window);

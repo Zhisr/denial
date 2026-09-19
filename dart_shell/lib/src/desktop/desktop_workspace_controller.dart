@@ -165,6 +165,8 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
       return;
     }
 
+    final serverFrameWhileMaximized =
+        windowLayout != DesktopWindowLayout.stacking;
     final nextPixelRatio = devicePixelRatio.isFinite && devicePixelRatio > 0.0
         ? devicePixelRatio
         : 1.0;
@@ -219,7 +221,7 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
               : _initialFrame(
                   nativeGeometry,
                   serverSideDecorated: window.serverSideDecorated,
-                  expanded: window.maximized,
+                  expanded: window.maximized && !serverFrameWhileMaximized,
                 ),
           z: nextZ++,
           monitorId: window.monitorId,
@@ -228,6 +230,7 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
           maximized: window.maximized,
           fullscreen: window.fullscreen,
           serverSideDecorated: window.serverSideDecorated,
+          serverFrameWhileMaximized: serverFrameWhileMaximized,
         );
         _nativeRevisions[window.objectId] = _NativeWindowRevisions(
           geometry: snapshotSequence,
@@ -296,7 +299,7 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
               : _initialFrame(
                   nativeGeometry,
                   serverSideDecorated: nativeServerSideDecorated,
-                  expanded: nativeMaximized,
+                  expanded: nativeMaximized && !serverFrameWhileMaximized,
                 );
           final pendingFrame = _pendingFlutterProposedFrames[window.objectId];
           final nativeAcknowledgedPending =
@@ -328,7 +331,7 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
           frame = _initialFrame(
             existing.contentRect,
             serverSideDecorated: nativeServerSideDecorated,
-            expanded: nativeMaximized,
+            expanded: nativeMaximized && !serverFrameWhileMaximized,
           );
         }
         current = existing.copyWith(
@@ -365,6 +368,14 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
           next[window.objectId] = current;
           changed = true;
         }
+      }
+
+      if (current.serverFrameWhileMaximized != serverFrameWhileMaximized) {
+        current = current.copyWith(
+          serverFrameWhileMaximized: serverFrameWhileMaximized,
+        );
+        next[window.objectId] = current;
+        changed = true;
       }
 
       if (!viewMetricsChanged) {
@@ -893,7 +904,8 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
         ? _initialFrame(
             event.contentRect,
             serverSideDecorated: placement.serverSideDecorated,
-            expanded: placement.maximized,
+            expanded:
+                placement.maximized && !placement.serverFrameWhileMaximized,
           )
         : placement.frame;
     final next = Map<int, DesktopWindowPlacement>.of(state.placements);
