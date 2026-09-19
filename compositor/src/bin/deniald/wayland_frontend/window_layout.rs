@@ -19,6 +19,8 @@ use super::super::window_layout::{
     LayoutAxis, LayoutDirection, LayoutInsertion, LayoutPlacement, LayoutResizeEdges,
     LayoutResizeRequest, LayoutSpace, WindowLayoutKind, create_window_layout, directional_neighbor,
 };
+#[cfg(feature = "flutter")]
+use super::WindowId;
 use super::managed_window::ManagedWindow;
 #[cfg(feature = "flutter")]
 use super::shell_content_geometry;
@@ -702,7 +704,9 @@ impl WaylandFrontend {
             return false;
         }
 
-        self.layout_insertion_anchors.clear();
+        for record in self.window_registry.values_mut() {
+            record.layout_insertion_anchor = None;
+        }
         let previously_managed = self.window_layout.manages_geometry();
         let next = create_window_layout(kind);
         let next_managed = next.manages_geometry();
@@ -735,14 +739,16 @@ impl WaylandFrontend {
             return false;
         };
         let window_id = root.id();
-        let remembered_anchor = self.layout_insertion_anchors.remove(&window_id);
+        let remembered_anchor = self
+            .window_record_for_surface_mut(&window_id)
+            .and_then(|record| record.layout_insertion_anchor.take());
         if !self.window_layout_eligible(window) {
             let removed = self.window_layout.remove(&window_id);
             if removed {
                 self.restore_detached_window_geometry(window, &window_id);
                 self.arrange_layout_windows();
-            } else {
-                self.layout_restore_geometries.remove(&window_id);
+            } else if let Some(record) = self.window_record_for_surface_mut(&window_id) {
+                record.layout_restore_geometry = None;
             }
             return removed;
         }
@@ -761,9 +767,8 @@ impl WaylandFrontend {
         }
         let geometry = self.window_geometry_target(window);
         let restore = self
-            .layout_restore_geometries
-            .get(&window_id)
-            .copied()
+            .window_record_for_surface(&window_id)
+            .and_then(|record| record.layout_restore_geometry)
             .filter(|geometry| has_visible_size(*geometry))
             .unwrap_or_else(|| self.stacking_geometry_for_layout(window, geometry));
         let Some(physical_output) = self
@@ -780,9 +785,10 @@ impl WaylandFrontend {
         }
         let space = self.layout_space_for_window(window, physical_output);
         if has_visible_size(restore) {
-            self.layout_restore_geometries
-                .entry(window_id.clone())
-                .or_insert(restore);
+            self.ensure_window_record_for_surface(&window_id)
+                .expect("managed window has no stable id")
+                .layout_restore_geometry
+                .get_or_insert(restore);
         }
         let anchor = remembered_anchor
             .or_else(|| self.focused_layout_window())
@@ -817,7 +823,9 @@ impl WaylandFrontend {
         else {
             return;
         };
-        self.layout_insertion_anchors.insert(window_id, anchor);
+        if let Some(record) = self.ensure_window_record_for_surface(&window_id) {
+            record.layout_insertion_anchor = Some(anchor);
+        }
     }
 
     /// Detach a window and collapse its layout node. `forget_restore` is false
@@ -832,7 +840,9 @@ impl WaylandFrontend {
         };
         let removed = self.window_layout.remove(&window_id);
         if forget_restore {
-            self.layout_restore_geometries.remove(&window_id);
+            if let Some(record) = self.window_record_for_surface_mut(&window_id) {
+                record.layout_restore_geometry = None;
+            }
         }
         if removed {
             self.arrange_layout_windows();
@@ -871,9 +881,10 @@ impl WaylandFrontend {
         let mut maximize_after_rebuild = Vec::new();
         for (window, space, geometry, adopt_scrolling_maximize) in windows {
             if has_visible_size(geometry) {
-                self.layout_restore_geometries
-                    .entry(window.clone())
-                    .or_insert(geometry);
+                self.ensure_window_record_for_surface(&window)
+                    .expect("managed window has no stable id")
+                    .layout_restore_geometry
+                    .get_or_insert(geometry);
             }
             let anchor = previous_by_space.insert(space, window.clone());
             insertions.push(LayoutInsertion {
@@ -1042,23 +1053,27 @@ impl WaylandFrontend {
 
     fn restore_stacking_geometries(&mut self) {
         self.window_layout.clear();
-        let restores = std::mem::take(&mut self.layout_restore_geometries);
-        for (window_id, saved_restore) in restores {
-            let window = self.space.elements().find_map(|window| {
-                (self.window_root_surface(window).map(|root| root.id()) == Some(window_id.clone()))
-                    .then(|| window.clone())
-            });
-            let Some(window) = window else {
+        let windows = self
+            .space
+            .elements()
+            .filter_map(|window| Some((window.clone(), self.window_root_surface(window)?.id())))
+            .collect::<Vec<_>>();
+        for (window, window_id) in windows {
+            let Some(saved_restore) = self
+                .window_record_for_surface_mut(&window_id)
+                .and_then(|record| record.layout_restore_geometry.take())
+            else {
                 continue;
             };
             let restore =
                 visible_stacking_restore(saved_restore, self.window_geometry_target(&window));
             if self.window_has_constrained_state(&window) {
-                self.restore_window_geometries
-                    .insert(window_id.clone(), restore);
-                #[cfg(feature = "flutter")]
-                if let Some(presentation) = self.shell_window_presentations.get_mut(&window_id) {
-                    presentation.update_normal_geometry(restore);
+                if let Some(record) = self.window_record_for_surface_mut(&window_id) {
+                    record.restore_geometry = Some(restore);
+                    #[cfg(feature = "flutter")]
+                    if let Some(presentation) = record.shell_presentation.as_mut() {
+                        presentation.update_normal_geometry(restore);
+                    }
                 }
                 continue;
             }
@@ -1072,8 +1087,8 @@ impl WaylandFrontend {
     fn restore_detached_window_geometry(&mut self, window: &Window, window_id: &ObjectId) {
         let current = self.window_geometry_target(window);
         let mut restore = self
-            .layout_restore_geometries
-            .remove(window_id)
+            .window_record_for_surface_mut(window_id)
+            .and_then(|record| record.layout_restore_geometry.take())
             .map(|saved| visible_stacking_restore(saved, current))
             .unwrap_or(current);
         let (minimum, maximum) = self.window_size_constraints(window);
@@ -1092,7 +1107,7 @@ impl WaylandFrontend {
             return false;
         };
         #[cfg(feature = "flutter")]
-        let minimized = self.minimized_windows.contains(&root.id());
+        let minimized = self.surface_is_minimized(&root.id());
         #[cfg(not(feature = "flutter"))]
         let minimized = false;
         #[cfg(feature = "flutter")]
@@ -1134,9 +1149,8 @@ impl WaylandFrontend {
             ManagedWindow::new(window).is_some_and(|window| window.facts().client_state.maximized);
         #[cfg(feature = "flutter")]
         let shell_maximized = self.window_root_surface(window).is_some_and(|root| {
-            self.shell_window_presentations
-                .get(&root.id())
-                .copied()
+            self.window_record_for_surface(&root.id())
+                .and_then(|record| record.shell_presentation)
                 .is_some_and(ShellWindowPresentation::has_maximized_underlay)
         });
         #[cfg(not(feature = "flutter"))]
@@ -1150,24 +1164,27 @@ impl WaylandFrontend {
             return false;
         }
         #[cfg(feature = "flutter")]
-        let removed_shell_overlay = match self.shell_window_presentations.remove(window) {
+        let removed_shell_overlay = match self
+            .window_record_for_surface_mut(window)
+            .and_then(|record| record.shell_presentation.take())
+        {
             Some(ShellWindowPresentation::Maximized { .. }) => true,
             Some(ShellWindowPresentation::Fullscreen {
                 return_geometry,
                 underlay: ShellFullscreenUnderlay::Maximized { normal_geometry },
             }) => {
-                self.shell_window_presentations.insert(
-                    window.clone(),
-                    ShellWindowPresentation::Fullscreen {
-                        return_geometry,
-                        underlay: ShellFullscreenUnderlay::LayoutMaximized { normal_geometry },
-                    },
-                );
+                self.window_record_for_surface_mut(window)
+                    .expect("managed window has no registry record")
+                    .shell_presentation = Some(ShellWindowPresentation::Fullscreen {
+                    return_geometry,
+                    underlay: ShellFullscreenUnderlay::LayoutMaximized { normal_geometry },
+                });
                 true
             }
             Some(presentation) => {
-                self.shell_window_presentations
-                    .insert(window.clone(), presentation);
+                self.window_record_for_surface_mut(window)
+                    .expect("managed window has no registry record")
+                    .shell_presentation = Some(presentation);
                 false
             }
             None => false,
@@ -1182,12 +1199,13 @@ impl WaylandFrontend {
         {
             let root = self.window_root_surface(window);
             if root.as_ref().is_some_and(|root| {
-                let id = root.id();
-                self.shell_window_presentations.contains_key(&id)
-                    || self
-                        .window_geometry_intents
-                        .get(&id)
-                        .is_some_and(|intent| intent.authority == WindowGeometryAuthority::Exact)
+                self.window_record_for_surface(&root.id())
+                    .is_some_and(|record| {
+                        record.shell_presentation.is_some()
+                            || record.geometry_intent.is_some_and(|intent| {
+                                intent.authority == WindowGeometryAuthority::Exact
+                            })
+                    })
             }) {
                 return true;
             }
@@ -1205,16 +1223,14 @@ impl WaylandFrontend {
         };
         #[cfg(feature = "flutter")]
         if let Some(restore) = self
-            .shell_window_presentations
-            .get(&root.id())
-            .copied()
+            .window_record_for_surface(&root.id())
+            .and_then(|record| record.shell_presentation)
             .map(ShellWindowPresentation::normal_geometry)
         {
             return restore;
         }
-        self.restore_window_geometries
-            .get(&root.id())
-            .copied()
+        self.window_record_for_surface(&root.id())
+            .and_then(|record| record.restore_geometry)
             .unwrap_or(fallback)
     }
 
@@ -1312,8 +1328,9 @@ impl WaylandFrontend {
                     output: space.output,
                     workspace: space.workspace,
                 };
-                self.minimized_window_outputs.remove(&stable_id);
-                changed |= self.window_workspaces.insert(stable_id, location) != Some(location);
+                let record = self.window_registry.ensure(WindowId::new(stable_id));
+                record.minimized_output = None;
+                changed |= record.workspace.replace(location) != Some(location);
             }
             return changed;
         }

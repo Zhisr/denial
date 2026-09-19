@@ -448,26 +448,12 @@ impl WaylandFrontend {
             surface_ids: HashMap::new(),
             surfaces_by_id: HashMap::new(),
             next_surface_id: 1,
-            window_geometry_intents: HashMap::new(),
-            layout_preview_sizes: HashMap::new(),
-            restore_window_geometries: HashMap::new(),
+            window_registry: WindowRegistry::default(),
             window_layout: create_window_layout(window_layout_kind),
-            layout_restore_geometries: HashMap::new(),
-            layout_insertion_anchors: HashMap::new(),
-            #[cfg(feature = "flutter")]
-            shell_window_presentations: HashMap::new(),
-            #[cfg(feature = "flutter")]
-            shell_vertical_restore_geometries: HashMap::new(),
-            #[cfg(feature = "flutter")]
-            local_vertical_restore_geometries: HashMap::new(),
             #[cfg(feature = "flutter")]
             input_layout: None,
             #[cfg(feature = "flutter")]
             shell_keyboard_focus: None,
-            #[cfg(feature = "flutter")]
-            pinned_windows: HashSet::new(),
-            #[cfg(feature = "flutter")]
-            visible_window_ids: HashSet::new(),
             #[cfg(feature = "flutter")]
             input_root_ids: HashMap::new(),
             #[cfg(feature = "flutter")]
@@ -537,10 +523,6 @@ impl WaylandFrontend {
             flutter_repeat_token: None,
             retired_keyboard_keys: HashSet::new(),
             #[cfg(feature = "flutter")]
-            minimized_windows: HashSet::new(),
-            #[cfg(feature = "flutter")]
-            minimized_local_windows: HashSet::new(),
-            #[cfg(feature = "flutter")]
             workspaces_enabled: workspace_settings.enabled,
             #[cfg(feature = "flutter")]
             workspace_count: workspace_settings.count,
@@ -551,16 +533,8 @@ impl WaylandFrontend {
                 .map(|output| (output.id, 1))
                 .collect(),
             #[cfg(feature = "flutter")]
-            window_workspaces: HashMap::new(),
-            #[cfg(feature = "flutter")]
-            minimized_window_outputs: HashMap::new(),
-            #[cfg(feature = "flutter")]
             workspace_focus_history: HashMap::new(),
             window_placements,
-            restored_window_positions: HashSet::new(),
-            client_geometry_state_requests: HashSet::new(),
-            pending_client_sized_placements: HashMap::new(),
-            placed_transient_parents: HashMap::new(),
             _output_manager_state: output_manager_state,
             seat_state,
             data_device_state,

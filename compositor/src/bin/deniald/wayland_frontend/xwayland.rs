@@ -516,7 +516,7 @@ impl XWaylandShellHandler for RuntimeState {
 
     fn surface_associated(&mut self, _xwm: XwmId, wl_surface: WlSurface, surface: X11Surface) {
         let frontend = self.wayland.as_mut().expect("missing Wayland frontend");
-        let stable_id = frontend.register_surface(&wl_surface);
+        let stable_id = frontend.register_window(&wl_surface).get();
         let mapped_window = {
             frontend
                 .space

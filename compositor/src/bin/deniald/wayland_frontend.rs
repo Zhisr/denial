@@ -203,6 +203,8 @@ mod window_outputs;
 #[cfg(feature = "flutter")]
 #[path = "wayland_frontend/window_presentation.rs"]
 mod window_presentation;
+#[path = "wayland_frontend/window_registry.rs"]
+mod window_registry;
 #[path = "wayland_frontend/window_state.rs"]
 mod window_state;
 #[cfg(feature = "flutter")]
@@ -248,6 +250,7 @@ pub(super) use window_management::{
 use window_management::{
     maximized_shell_content_geometry, shell_content_geometry, shell_draws_server_frame,
 };
+use window_registry::{WindowId, WindowRegistry};
 
 const MAX_PENDING_DMABUF_IMPORTS: usize = 128;
 const XDG_ACTIVATION_TOKEN_LIFETIME: Duration = Duration::from_secs(10);
@@ -468,31 +471,12 @@ pub(super) struct WaylandFrontend {
     surface_ids: HashMap<ObjectId, u64>,
     surfaces_by_id: HashMap<u64, WlSurface>,
     next_surface_id: u64,
-    window_geometry_intents: HashMap<ObjectId, WindowGeometryIntent>,
-    /// Client sizes requested for presentation-only layout drop previews.
-    ///
-    /// These do not replace the authoritative layout geometry contract. They
-    /// only prevent a speculative client commit from being mistaken for a
-    /// challenge to that contract while the pointer grab remains active.
-    layout_preview_sizes: HashMap<ObjectId, Size<i32, Logical>>,
-    restore_window_geometries: HashMap<ObjectId, Rectangle<i32, Logical>>,
+    window_registry: WindowRegistry,
     window_layout: Box<dyn WindowLayout<ObjectId>>,
-    layout_restore_geometries: HashMap<ObjectId, Rectangle<i32, Logical>>,
-    layout_insertion_anchors: HashMap<ObjectId, ObjectId>,
-    #[cfg(feature = "flutter")]
-    shell_window_presentations: HashMap<ObjectId, window_presentation::ShellWindowPresentation>,
-    #[cfg(feature = "flutter")]
-    shell_vertical_restore_geometries: HashMap<ObjectId, (i32, i32)>,
-    #[cfg(feature = "flutter")]
-    local_vertical_restore_geometries: HashMap<u64, (f64, f64)>,
     #[cfg(feature = "flutter")]
     input_layout: Option<InputLayoutSnapshot>,
     #[cfg(feature = "flutter")]
     shell_keyboard_focus: Option<KeyboardFocusTarget>,
-    #[cfg(feature = "flutter")]
-    pinned_windows: HashSet<u64>,
-    #[cfg(feature = "flutter")]
-    visible_window_ids: HashSet<u64>,
     #[cfg(feature = "flutter")]
     input_root_ids: HashMap<ObjectId, u64>,
     #[cfg(feature = "flutter")]
@@ -574,29 +558,14 @@ pub(super) struct WaylandFrontend {
     flutter_repeat_token: Option<RegistrationToken>,
     retired_keyboard_keys: HashSet<u32>,
     #[cfg(feature = "flutter")]
-    minimized_windows: HashSet<ObjectId>,
-    #[cfg(feature = "flutter")]
-    minimized_local_windows: HashSet<u64>,
-    #[cfg(feature = "flutter")]
     workspaces_enabled: bool,
     #[cfg(feature = "flutter")]
     workspace_count: u8,
     #[cfg(feature = "flutter")]
     active_workspaces: HashMap<OutputId, u8>,
     #[cfg(feature = "flutter")]
-    window_workspaces: HashMap<u64, workspace::WorkspaceLocation>,
-    #[cfg(feature = "flutter")]
-    minimized_window_outputs: HashMap<u64, OutputId>,
-    #[cfg(feature = "flutter")]
     workspace_focus_history: HashMap<(OutputId, u8), u64>,
     window_placements: WindowPlacementStore,
-    restored_window_positions: HashSet<ObjectId>,
-    client_geometry_state_requests: HashSet<ObjectId>,
-    pending_client_sized_placements: HashMap<ObjectId, PendingClientSizedPlacement>,
-    /// Parent association for each XDG transient whose initial client-sized
-    /// geometry has already been placed. A changed parent creates one new
-    /// placement; ordinary buffer commits never recenter a dialog.
-    placed_transient_parents: HashMap<ObjectId, ObjectId>,
     pub _output_manager_state: OutputManagerState,
     pub seat_state: SeatState<RuntimeState>,
     pub data_device_state: DataDeviceState,
@@ -1000,15 +969,6 @@ fn input_visibility_changed(
     next: &InputLayoutSnapshot,
 ) -> bool {
     current.is_none_or(|current| current.visible_surface_ids != next.visible_surface_ids)
-}
-
-#[cfg(feature = "flutter")]
-fn window_expects_sample(
-    input_visibility_known: bool,
-    visible_window_ids: &HashSet<u64>,
-    window_id: u64,
-) -> bool {
-    !input_visibility_known || visible_window_ids.contains(&window_id)
 }
 
 #[cfg(feature = "flutter")]

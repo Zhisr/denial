@@ -73,7 +73,7 @@ impl WaylandFrontend {
         self.text_input.set_shell_capture(false);
         self.text_input.retire_flutter_generation();
         self.synchronize_input_method();
-        self.visible_window_ids.clear();
+        self.clear_visible_windows();
         self.input_visibility_known = false;
         self.invalidate_idle_inhibition();
         self.client_input_route_cache = None;
@@ -326,7 +326,7 @@ impl WaylandFrontend {
                     .contains(&popup.surface().id())
                     && self
                         .surface_id(popup.surface())
-                        .is_some_and(|surface_id| self.visible_window_ids.contains(&surface_id))
+                        .is_some_and(|surface_id| self.window_id_is_visible(surface_id))
                 {
                     self.pending_input_method_frame_callbacks
                         .remove(&popup.surface().id());

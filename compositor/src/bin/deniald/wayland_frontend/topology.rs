@@ -171,9 +171,8 @@ impl WaylandFrontend {
                     root_surface: root_surface.clone(),
                     geometry: self.window_geometry_target(window),
                     restore_geometry: self
-                        .restore_window_geometries
-                        .get(&root_surface.id())
-                        .copied(),
+                        .window_record_for_surface(&root_surface.id())
+                        .and_then(|record| record.restore_geometry),
                     fullscreen: client.fullscreen,
                     maximized: client.maximized,
                 })
@@ -282,8 +281,9 @@ impl WaylandFrontend {
                     &old_output_geometries,
                     &new_output_geometries,
                 );
-                self.restore_window_geometries
-                    .insert(surface_id.clone(), restore);
+                self.ensure_window_record_for_surface(&surface_id)
+                    .expect("managed window has no stable id")
+                    .restore_geometry = Some(restore);
             }
 
             let target = if record.fullscreen || record.maximized {

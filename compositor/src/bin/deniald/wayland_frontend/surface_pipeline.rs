@@ -691,11 +691,7 @@ impl WaylandFrontend {
                 return None;
             };
             let expects_sample = self.scene_layer_surface_roots.contains(&window_id)
-                || window_expects_sample(
-                    self.input_visibility_known,
-                    &self.visible_window_ids,
-                    window_id,
-                );
+                || self.window_expects_sample(window_id);
             let Some(frame) = self.external_texture_frame(surface_id, expects_sample) else {
                 self.scene_textures_scratch = textures;
                 return None;
@@ -902,11 +898,7 @@ impl WaylandFrontend {
             // sample so restore begins with the client's latest generation.
             // Until Dart publishes its first visibility snapshot, preserve
             // the conservative sampled-texture lifetime contract.
-            let expects_sample = window_expects_sample(
-                self.input_visibility_known,
-                &self.visible_window_ids,
-                stable_id,
-            );
+            let expects_sample = self.window_expects_sample(stable_id);
             self.append_surface_tree(
                 &surface,
                 (0, 0).into(),
@@ -1003,12 +995,14 @@ impl WaylandFrontend {
             } else {
                 fallback_height
             };
-            let minimized = self.minimized_windows.contains(&surface.id());
+            let minimized = self.surface_is_minimized(&surface.id());
             if !minimized
                 && let Some(parent_id) = self.transient_parent_stable_id(&window)
                 && let Some(parent_location) = self.workspace_location(parent_id)
             {
-                self.window_workspaces.insert(stable_id, parent_location);
+                self.window_registry
+                    .ensure(WindowId::new(stable_id))
+                    .workspace = Some(parent_location);
             }
             // A managed leaf's layout space owns output and workspace as one
             // value. In particular, a scrolling column may intentionally be
@@ -1171,7 +1165,7 @@ impl WaylandFrontend {
                 .output_for_geometry(global_geometry)
                 .and_then(|entry| i64::try_from(entry.id.0).ok())
                 .unwrap_or(-1);
-            let minimized = self.minimized_local_windows.contains(&local_window.id);
+            let minimized = self.window_is_minimized(local_window.id);
             let output_id = self
                 .output_for_geometry(global_geometry)
                 .map(|entry| entry.id);
@@ -1221,7 +1215,7 @@ impl WaylandFrontend {
                 minimized,
                 fullscreen: false,
                 maximized: false,
-                pinned: self.pinned_windows.contains(&local_window.id),
+                pinned: self.window_id_is_pinned(local_window.id),
                 transform: 0,
                 scale_120: 120,
                 content_x: 0.0,
@@ -1446,11 +1440,7 @@ impl WaylandFrontend {
                 app_id.clear();
                 app_id.push_str("denia-systemui-input-method");
                 layers.clear();
-                let expects_sample = window_expects_sample(
-                    self.input_visibility_known,
-                    &self.visible_window_ids,
-                    stable_id,
-                );
+                let expects_sample = self.window_expects_sample(stable_id);
                 let mut composition_order = 0;
                 self.append_surface_tree(
                     surface,
@@ -1610,18 +1600,18 @@ impl WaylandFrontend {
         let routing_changed = input_routing_changed(self.input_layout.as_ref(), &layout);
         let visibility_changed = input_visibility_changed(self.input_layout.as_ref(), &layout);
         if visibility_changed {
-            let mut visible_window_ids = std::mem::take(&mut self.visible_window_ids);
-            visible_window_ids.clear();
+            self.clear_visible_windows();
             for surface_id in &layout.visible_surface_ids {
                 let Some(surface) = self.surfaces_by_id.get(surface_id) else {
                     continue;
                 };
                 let root = self.toplevel_candidate_surface(surface);
                 if let Some(window_id) = self.input_root_ids.get(&root.id()).copied() {
-                    visible_window_ids.insert(window_id);
+                    self.window_registry
+                        .ensure(WindowId::new(window_id))
+                        .visible = true;
                 }
             }
-            self.visible_window_ids = visible_window_ids;
             self.invalidate_idle_inhibition();
         }
         self.input_visibility_known = true;

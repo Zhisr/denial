@@ -1502,6 +1502,7 @@ impl XdgShellHandler for RuntimeState {
             .expect("seat has no keyboard");
         let initial_activation = {
             let frontend = self.wayland.as_mut().expect("missing Wayland frontend");
+            frontend.register_window(&focus);
             let window = Window::new_wayland_window(surface);
             let offset = frontend.next_window_offset;
             frontend.next_window_offset = (frontend.next_window_offset + 48).min(384);

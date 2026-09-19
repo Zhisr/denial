@@ -1064,12 +1064,16 @@ pub(super) fn release_client_geometry_for_shell_grab(
         let root = frontend.window_root_surface(window);
         let (restore, shell_owned) = root.as_ref().map_or((None, false), |surface| {
             let surface_id = surface.id();
-            let presentation = frontend.shell_window_presentations.remove(&surface_id);
+            let presentation = frontend.take_shell_presentation(&surface_id);
             let shell_owned = presentation.is_some();
             let restore = presentation
                 .map(|presentation| presentation.normal_geometry())
-                .or_else(|| frontend.layout_restore_geometries.get(&surface_id).copied())
-                .or_else(|| frontend.restore_window_geometries.remove(&surface_id));
+                .or_else(|| {
+                    frontend
+                        .window_record_for_surface(&surface_id)
+                        .and_then(|record| record.layout_restore_geometry)
+                })
+                .or_else(|| frontend.take_restore_geometry(&surface_id));
             (restore, shell_owned)
         });
         if let Some(restore) = restore {

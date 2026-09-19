@@ -1178,11 +1178,8 @@ fn release_geometry_constraints(state: &mut RuntimeState, window: &Window) -> bo
     };
     let frontend = state.wayland.as_mut().expect("missing Wayland frontend");
     let surface_id = root.id();
-    let shell_owned = frontend
-        .shell_window_presentations
-        .remove(&surface_id)
-        .is_some();
-    frontend.restore_window_geometries.remove(&surface_id);
+    let shell_owned = frontend.take_shell_presentation(&surface_id).is_some();
+    frontend.clear_restore_geometry(&surface_id);
     client_cleared || shell_owned
 }
 

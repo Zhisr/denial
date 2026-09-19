@@ -21,8 +21,6 @@ use super::super::window_placement_store::RestoredWindowPlacement;
 use super::super::wire::{
     WindowAction, WindowCommand, WindowGeometry, WindowPlacementChange, WindowPlacementPhase,
 };
-#[cfg(feature = "flutter")]
-use super::WaylandFrontend;
 use super::WindowGeometryAuthority;
 #[cfg(feature = "flutter")]
 use super::clamp_window_geometry;
@@ -34,6 +32,8 @@ use super::managed_window::{ClientStateRequestKind, ManagedWindow};
 use super::window_presentation::{
     ShellFixedMaximizeTransition, ShellFullscreenExit, ShellWindowPresentation,
 };
+#[cfg(feature = "flutter")]
+use super::{WaylandFrontend, WindowId};
 
 fn bound_geometry_size(mut geometry: Rectangle<i32, Logical>) -> Rectangle<i32, Logical> {
     geometry.size = Size::from((
@@ -193,7 +193,7 @@ pub(super) fn activate_window(
             let root = frontend.window_root_surface(window)?;
             Some((
                 frontend.surface_id(&root)?,
-                frontend.minimized_windows.contains(&root.id()),
+                frontend.surface_is_minimized(&root.id()),
             ))
         }) else {
             return false;
@@ -290,7 +290,7 @@ pub(super) fn activate_topmost_window(state: &mut RuntimeState) -> bool {
                     .is_some_and(|managed| !managed.facts().override_redirect)
                     && frontend.window_root_surface(candidate).is_some_and(|root| {
                         root.is_alive()
-                            && !frontend.minimized_windows.contains(&root.id())
+                            && !frontend.surface_is_minimized(&root.id())
                             && frontend
                                 .surface_id(&root)
                                 .is_some_and(|id| frontend.window_is_on_active_workspace(id))
@@ -334,7 +334,7 @@ fn activate_workspace_fallback(
                     .is_some_and(|managed| !managed.facts().override_redirect)
                     && frontend.window_root_surface(candidate).is_some_and(|root| {
                         root.is_alive()
-                            && !frontend.minimized_windows.contains(&root.id())
+                            && !frontend.surface_is_minimized(&root.id())
                             && frontend
                                 .surface_id(&root)
                                 .is_some_and(&belongs_to_workspace)
@@ -346,8 +346,7 @@ fn activate_workspace_fallback(
             .local_windows
             .iter()
             .filter(|window| {
-                !frontend.minimized_local_windows.contains(&window.id)
-                    && belongs_to_workspace(window.id)
+                !frontend.window_is_minimized(window.id) && belongs_to_workspace(window.id)
             })
             .map(|window| window.id)
             .collect::<Vec<_>>();
@@ -634,8 +633,9 @@ pub(in super::super) fn apply_window_commands(
                         let destination_bounds = frontend
                             .maximize_work_area(Some(&destination_output), destination_geometry);
                         let surface_id = root_surface.id();
-                        if let Some(presentation) =
-                            frontend.shell_window_presentations.get_mut(&surface_id)
+                        if let Some(presentation) = frontend
+                            .window_record_for_surface_mut(&surface_id)
+                            .and_then(|record| record.shell_presentation.as_mut())
                         {
                             presentation.map_geometries(|geometry| {
                                 transfer_restore_geometry(
@@ -661,8 +661,7 @@ pub(in super::super) fn apply_window_commands(
                         .wayland
                         .as_mut()
                         .expect("missing Wayland frontend")
-                        .restore_window_geometries
-                        .remove(&root_surface.id());
+                        .clear_restore_geometry(&root_surface.id());
                 }
                 managed.prepare_shell_geometry(target);
                 let frontend = state.wayland.as_mut().expect("missing Wayland frontend");
@@ -777,11 +776,11 @@ pub(super) fn move_window_to_workspace(
         .map(denial_core::topology::OutputId);
     let location = {
         let frontend = state.wayland.as_mut().expect("missing Wayland frontend");
-        if frontend.minimized_local_windows.contains(&window_id) {
+        if frontend.window_is_minimized(window_id) {
             frontend.set_local_flutter_window_minimized(window_id, false);
         } else if let Some(window) = frontend.window_for_id(window_id)
             && let Some(root) = frontend.window_root_surface(&window)
-            && frontend.minimized_windows.contains(&root.id())
+            && frontend.surface_is_minimized(&root.id())
         {
             frontend.set_surface_minimized(root.id(), false);
         }
@@ -903,7 +902,7 @@ fn move_window_geometry_to_output(
 #[cfg(feature = "flutter")]
 pub(super) fn activate_local_flutter_window(state: &mut RuntimeState, window_id: u64) -> bool {
     let frontend = state.wayland.as_mut().expect("missing Wayland frontend");
-    if frontend.minimized_local_windows.contains(&window_id) {
+    if frontend.window_is_minimized(window_id) {
         frontend.set_local_flutter_window_minimized(window_id, false);
     } else if !frontend.window_is_on_active_workspace(window_id) {
         return false;
@@ -1257,12 +1256,9 @@ pub(super) fn toggle_always_on_top_focused_toplevel(state: &mut RuntimeState) ->
 
     let pinned = {
         let frontend = state.wayland.as_mut().expect("missing Wayland frontend");
-        if frontend.pinned_windows.remove(&window_id) {
-            false
-        } else {
-            frontend.pinned_windows.insert(window_id);
-            true
-        }
+        let record = frontend.window_registry.ensure(WindowId::new(window_id));
+        record.pinned = !record.pinned;
+        record.pinned
     };
     if let Some(window) = client_window {
         let frontend = state.wayland.as_mut().expect("missing Wayland frontend");
@@ -1307,7 +1303,7 @@ pub(super) fn minimize_all_toplevels(state: &mut RuntimeState) -> bool {
                 ManagedWindow::new(window).is_some_and(|managed| !managed.facts().override_redirect)
                     && frontend.window_root_surface(window).is_some_and(|root| {
                         root.is_alive()
-                            && !frontend.minimized_windows.contains(&root.id())
+                            && !frontend.surface_is_minimized(&root.id())
                             && frontend
                                 .surface_id(&root)
                                 .is_some_and(|id| frontend.window_is_on_active_workspace(id))
@@ -1453,8 +1449,8 @@ pub(super) fn toggle_shell_maximize_focused_toplevel(state: &mut RuntimeState) -
                 return true;
             }
             if presentation.fullscreen {
-                frontend.shell_window_presentations.remove(&surface_id);
-                frontend.restore_window_geometries.remove(&surface_id);
+                frontend.take_shell_presentation(&surface_id);
+                frontend.clear_restore_geometry(&surface_id);
                 clear_client_geometry_constraints(&window);
             }
             frontend.arrange_layout_windows();
@@ -1483,7 +1479,7 @@ pub(super) fn toggle_shell_maximize_focused_toplevel(state: &mut RuntimeState) -
             return false;
         };
         let surface_id = root_surface.id();
-        let shell_presentation = frontend.shell_window_presentations.remove(&surface_id);
+        let shell_presentation = frontend.take_shell_presentation(&surface_id);
         let shell_transition = shell_presentation.map(|presentation| {
             if client.fullscreen
                 && let ShellWindowPresentation::Maximized { normal_geometry } = presentation
@@ -1498,7 +1494,7 @@ pub(super) fn toggle_shell_maximize_focused_toplevel(state: &mut RuntimeState) -
         });
         match shell_transition {
             Some(ShellFixedMaximizeTransition::RestoreNormal { geometry }) => {
-                frontend.restore_window_geometries.remove(&surface_id);
+                frontend.clear_restore_geometry(&surface_id);
                 (
                     bound_geometry_size(geometry),
                     WindowAction::Restore,
@@ -1517,37 +1513,33 @@ pub(super) fn toggle_shell_maximize_focused_toplevel(state: &mut RuntimeState) -
                     target
                 } else {
                     if let Some(presentation) = shell_presentation {
-                        frontend
-                            .shell_window_presentations
-                            .insert(surface_id, presentation);
+                        frontend.set_shell_presentation(&surface_id, presentation);
                     }
                     return false;
                 };
-                frontend.shell_window_presentations.insert(
-                    surface_id,
+                frontend.set_shell_presentation(
+                    &surface_id,
                     ShellWindowPresentation::Maximized { normal_geometry },
                 );
                 (target, WindowAction::Maximize, false)
             }
             None if client.fullscreen => {
                 let normal_geometry = frontend
-                    .restore_window_geometries
-                    .remove(&surface_id)
+                    .take_restore_geometry(&surface_id)
                     .unwrap_or_else(|| frontend.window_geometry_target(&window));
                 let Some(target) = shell_maximized_geometry(frontend, &window, normal_geometry)
                 else {
                     return false;
                 };
-                frontend.shell_window_presentations.insert(
-                    surface_id,
+                frontend.set_shell_presentation(
+                    &surface_id,
                     ShellWindowPresentation::Maximized { normal_geometry },
                 );
                 (target, WindowAction::Maximize, false)
             }
             None if client.maximized => {
                 let normal_geometry = frontend
-                    .restore_window_geometries
-                    .remove(&surface_id)
+                    .take_restore_geometry(&surface_id)
                     .unwrap_or_else(|| frontend.window_geometry_target(&window));
                 (
                     bound_geometry_size(normal_geometry),
@@ -1561,8 +1553,8 @@ pub(super) fn toggle_shell_maximize_focused_toplevel(state: &mut RuntimeState) -
                 else {
                     return false;
                 };
-                frontend.shell_window_presentations.insert(
-                    surface_id,
+                frontend.set_shell_presentation(
+                    &surface_id,
                     ShellWindowPresentation::Maximized { normal_geometry },
                 );
                 (target, WindowAction::Maximize, false)
@@ -1607,8 +1599,8 @@ pub(super) fn toggle_shell_vertical_maximize_focused_toplevel(state: &mut Runtim
                 return false;
             };
             if let Some((y, height)) = frontend
-                .local_vertical_restore_geometries
-                .remove(&window_id)
+                .window_record_mut(window_id)
+                .and_then(|record| record.vertical_restore_geometry.take())
             {
                 (
                     WindowGeometry {
@@ -1652,8 +1644,9 @@ pub(super) fn toggle_shell_vertical_maximize_focused_toplevel(state: &mut Runtim
         frontend.set_local_flutter_window_global_geometry(window_id, target);
         if let Some(restore) = restore {
             frontend
-                .local_vertical_restore_geometries
-                .insert(window_id, restore);
+                .window_registry
+                .ensure(WindowId::new(window_id))
+                .vertical_restore_geometry = Some(restore);
         }
         queue_local_flutter_window_placement(
             state,
@@ -1681,13 +1674,13 @@ pub(super) fn toggle_shell_vertical_maximize_focused_toplevel(state: &mut Runtim
         let surface_id = root_surface.id();
         let current = bound_geometry_size(frontend.window_geometry_target(&window));
         if let Some((y, height)) = frontend
-            .shell_vertical_restore_geometries
-            .remove(&surface_id)
+            .window_record_for_surface_mut(&surface_id)
+            .and_then(|record| record.vertical_restore_geometry.take())
         {
             (
                 Rectangle::new(
-                    Point::from((current.loc.x, y)),
-                    Size::from((current.size.w, height)),
+                    Point::from((current.loc.x, y as i32)),
+                    Size::from((current.size.w, height as i32)),
                 ),
                 None,
             )
@@ -1708,7 +1701,10 @@ pub(super) fn toggle_shell_vertical_maximize_focused_toplevel(state: &mut Runtim
                     Point::from((current.loc.x, content.loc.y)),
                     Size::from((current.size.w, content.size.h)),
                 ),
-                Some((surface_id, (current.loc.y, current.size.h))),
+                Some((
+                    surface_id,
+                    (f64::from(current.loc.y), f64::from(current.size.h)),
+                )),
             )
         }
     };
@@ -1725,9 +1721,9 @@ pub(super) fn toggle_shell_vertical_maximize_focused_toplevel(state: &mut Runtim
     };
     frontend.set_window_geometry_target_with_authority(&window, target, authority);
     if let Some((surface_id, geometry)) = restore {
-        frontend
-            .shell_vertical_restore_geometries
-            .insert(surface_id, geometry);
+        if let Some(record) = frontend.ensure_window_record_for_surface(&surface_id) {
+            record.vertical_restore_geometry = Some(geometry);
+        }
     }
     queue_window_placement_for_monitor(
         state,
@@ -1766,7 +1762,7 @@ pub(super) fn toggle_shell_fullscreen_focused_toplevel(state: &mut RuntimeState)
         let presentation = frontend.managed_window_presentation(&window);
         let current = bound_geometry_size(frontend.window_geometry_target(&window));
         if presentation.fullscreen {
-            let shell_presentation = frontend.shell_window_presentations.remove(&surface_id);
+            let shell_presentation = frontend.take_shell_presentation(&surface_id);
             match shell_presentation.and_then(ShellWindowPresentation::exit_fullscreen) {
                 Some(ShellFullscreenExit::Normal { geometry }) => (
                     bound_geometry_size(geometry),
@@ -1787,9 +1783,7 @@ pub(super) fn toggle_shell_fullscreen_focused_toplevel(state: &mut RuntimeState)
                                 shell_maximized_geometry(frontend, &window, normal_geometry)
                             else {
                                 if let Some(presentation) = shell_presentation {
-                                    frontend
-                                        .shell_window_presentations
-                                        .insert(surface_id, presentation);
+                                    frontend.set_shell_presentation(&surface_id, presentation);
                                 }
                                 return false;
                             };
@@ -1797,8 +1791,8 @@ pub(super) fn toggle_shell_fullscreen_focused_toplevel(state: &mut RuntimeState)
                         } else {
                             bound_geometry_size(geometry)
                         };
-                        frontend.shell_window_presentations.insert(
-                            surface_id,
+                        frontend.set_shell_presentation(
+                            &surface_id,
                             ShellWindowPresentation::Maximized { normal_geometry },
                         );
                         (target, WindowAction::Maximize, false)
@@ -1809,22 +1803,21 @@ pub(super) fn toggle_shell_fullscreen_focused_toplevel(state: &mut RuntimeState)
                 {
                     let Some(target) = shell_maximized_geometry(frontend, &window, normal_geometry)
                     else {
-                        frontend.shell_window_presentations.insert(
-                            surface_id,
+                        frontend.set_shell_presentation(
+                            &surface_id,
                             ShellWindowPresentation::Maximized { normal_geometry },
                         );
                         return false;
                     };
-                    frontend.shell_window_presentations.insert(
-                        surface_id,
+                    frontend.set_shell_presentation(
+                        &surface_id,
                         ShellWindowPresentation::Maximized { normal_geometry },
                     );
                     (target, WindowAction::Maximize, false)
                 }
                 None => {
                     let target = frontend
-                        .restore_window_geometries
-                        .remove(&surface_id)
+                        .take_restore_geometry(&surface_id)
                         .unwrap_or(current);
                     let layout_maximized = frontend.window_is_layout_maximized(&window);
                     (
@@ -1861,28 +1854,23 @@ pub(super) fn toggle_shell_fullscreen_focused_toplevel(state: &mut RuntimeState)
             let Some(target) = output_geometry else {
                 return false;
             };
-            let previous = frontend
-                .shell_window_presentations
-                .remove(&surface_id)
-                .or_else(|| {
-                    client
-                        .maximized
-                        .then(|| ShellWindowPresentation::Maximized {
-                            normal_geometry: frontend
-                                .restore_window_geometries
-                                .remove(&surface_id)
-                                .unwrap_or(current),
-                        })
-                });
+            let previous = frontend.take_shell_presentation(&surface_id).or_else(|| {
+                client
+                    .maximized
+                    .then(|| ShellWindowPresentation::Maximized {
+                        normal_geometry: frontend
+                            .take_restore_geometry(&surface_id)
+                            .unwrap_or(current),
+                    })
+            });
             let layout_normal_geometry = frontend.window_is_layout_maximized(&window).then(|| {
                 frontend
-                    .layout_restore_geometries
-                    .get(&surface_id)
-                    .copied()
+                    .window_record_for_surface(&surface_id)
+                    .and_then(|record| record.layout_restore_geometry)
                     .unwrap_or(current)
             });
-            frontend.shell_window_presentations.insert(
-                surface_id,
+            frontend.set_shell_presentation(
+                &surface_id,
                 ShellWindowPresentation::fullscreen(current, previous, layout_normal_geometry),
             );
             (target, WindowAction::Fullscreen, false)
@@ -2117,12 +2105,12 @@ pub(super) fn apply_managed_client_state_request(
     {
         let restore = bound_geometry_size(current);
         let frontend = state.wayland.as_mut().expect("missing Wayland frontend");
-        match frontend.restore_window_geometries.entry(root_id.clone()) {
-            std::collections::hash_map::Entry::Vacant(entry) => {
-                entry.insert(restore);
+        match frontend.ensure_window_record_for_surface(&root_id) {
+            Some(record) if record.restore_geometry.is_none() => {
+                record.restore_geometry = Some(restore);
                 Some(restore)
             }
-            std::collections::hash_map::Entry::Occupied(_) => None,
+            _ => None,
         }
     } else {
         None
@@ -2132,8 +2120,7 @@ pub(super) fn apply_managed_client_state_request(
             .wayland
             .as_mut()
             .expect("missing Wayland frontend")
-            .restore_window_geometries
-            .remove(&root_id)
+            .take_restore_geometry(&root_id)
             .map(bound_geometry_size)
     } else {
         None
