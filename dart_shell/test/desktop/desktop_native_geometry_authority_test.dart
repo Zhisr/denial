@@ -233,6 +233,71 @@ void main() {
     expect(placement.drawsLiveServerFrame, isTrue);
   });
 
+  test('local maximize-fullscreen-maximize-restore is reversible', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final workspace = container.read(desktopWorkspaceProvider.notifier);
+    const viewSize = Size(1920, 1080);
+    const normal = Rect.fromLTWH(200, 120, 900, 700);
+    const maximized = Rect.fromLTWH(8, 40, 1904, 1032);
+    const fullscreen = Rect.fromLTWH(0, 0, 1920, 1080);
+    final window = nativeWindow(
+      objectKind: 'flutter',
+      geometry: normal,
+      fullscreen: false,
+      contentKind: DenialWindowContentKind.localFlutter,
+    );
+
+    workspace.syncWindows(
+      <DenialWindow>[window],
+      viewSize,
+      1,
+      snapshotSequence: 27,
+    );
+    final normalFrame = container
+        .read(desktopWorkspaceProvider)
+        .placements[7]!
+        .frame;
+    workspace.applyFlutterOwnedWindowAction(
+      window,
+      DenialWindowAction.toggleMaximize,
+      maximizeBounds: maximized,
+      fullscreenBounds: fullscreen,
+    );
+    expect(
+      workspace.applyFlutterOwnedWindowAction(
+        window,
+        DenialWindowAction.toggleFullscreen,
+        maximizeBounds: maximized,
+        fullscreenBounds: fullscreen,
+      ),
+      isTrue,
+    );
+    workspace.applyFlutterOwnedWindowAction(
+      window,
+      DenialWindowAction.toggleMaximize,
+      maximizeBounds: maximized,
+      fullscreenBounds: fullscreen,
+    );
+
+    var placement = container.read(desktopWorkspaceProvider).placements[7]!;
+    expect(placement.fullscreen, isFalse);
+    expect(placement.maximized, isTrue);
+    expect(placement.frame, maximized);
+    expect(placement.restoreFrame, normalFrame);
+
+    workspace.applyFlutterOwnedWindowAction(
+      window,
+      DenialWindowAction.toggleMaximize,
+      maximizeBounds: maximized,
+      fullscreenBounds: fullscreen,
+    );
+    placement = container.read(desktopWorkspaceProvider).placements[7]!;
+    expect(placement.fullscreen, isFalse);
+    expect(placement.maximized, isFalse);
+    expect(placement.frame, normalFrame);
+  });
+
   test('only a begun move marks a scrolling tile as actively dragged', () {
     final container = ProviderContainer();
     addTearDown(container.dispose);

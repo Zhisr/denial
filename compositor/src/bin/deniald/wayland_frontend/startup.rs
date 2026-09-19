@@ -455,9 +455,7 @@ impl WaylandFrontend {
             layout_restore_geometries: HashMap::new(),
             layout_insertion_anchors: HashMap::new(),
             #[cfg(feature = "flutter")]
-            shell_maximize_restore_geometries: HashMap::new(),
-            #[cfg(feature = "flutter")]
-            shell_fullscreen_restore_geometries: HashMap::new(),
+            shell_window_presentations: HashMap::new(),
             #[cfg(feature = "flutter")]
             shell_vertical_restore_geometries: HashMap::new(),
             #[cfg(feature = "flutter")]
@@ -466,8 +464,6 @@ impl WaylandFrontend {
             input_layout: None,
             #[cfg(feature = "flutter")]
             shell_keyboard_focus: None,
-            #[cfg(feature = "flutter")]
-            shell_fullscreen_locks: HashSet::new(),
             #[cfg(feature = "flutter")]
             pinned_windows: HashSet::new(),
             #[cfg(feature = "flutter")]

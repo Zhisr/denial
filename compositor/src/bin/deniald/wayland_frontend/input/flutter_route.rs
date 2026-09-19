@@ -1062,24 +1062,20 @@ pub(super) fn release_client_geometry_for_shell_grab(
     let target = {
         let frontend = state.wayland.as_mut().expect("missing Wayland frontend");
         let root = frontend.window_root_surface(window);
-        let restore = root.as_ref().and_then(|surface| {
-            frontend
-                .shell_fullscreen_restore_geometries
-                .remove(&surface.id())
-                .or_else(|| {
-                    frontend
-                        .shell_maximize_restore_geometries
-                        .remove(&surface.id())
-                })
-                .or_else(|| frontend.restore_window_geometries.remove(&surface.id()))
+        let (restore, shell_owned) = root.as_ref().map_or((None, false), |surface| {
+            let surface_id = surface.id();
+            let presentation = frontend.shell_window_presentations.remove(&surface_id);
+            let shell_owned = presentation.is_some();
+            let restore = presentation
+                .map(|presentation| presentation.normal_geometry())
+                .or_else(|| frontend.layout_restore_geometries.get(&surface_id).copied())
+                .or_else(|| frontend.restore_window_geometries.remove(&surface_id));
+            (restore, shell_owned)
         });
-        let shell_locked = root
-            .as_ref()
-            .is_some_and(|root| frontend.shell_fullscreen_locks.remove(&root.id()));
         if let Some(restore) = restore {
             frontend.set_window_geometry_target(window, restore);
             Some(restore)
-        } else if client_constraints_cleared || shell_locked {
+        } else if client_constraints_cleared || shell_owned {
             Some(frontend.window_geometry_target(window))
         } else {
             None

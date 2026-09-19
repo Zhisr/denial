@@ -1045,12 +1045,34 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
       return;
     }
     final placement = state.placements[objectId];
-    if (placement == null || placement.fullscreen) {
+    if (placement == null) {
       return;
     }
     _moveRemainders.remove(objectId);
     final next = Map<int, DesktopWindowPlacement>.of(state.placements);
-    if (placement.maximized) {
+    if (placement.fullscreen) {
+      final canvas = Offset.zero & state.viewSize;
+      final requestedBounds = bounds?.intersect(canvas);
+      final maximizedFrame = placement.maximized
+          ? placement.fullscreenRestoreFrame ?? placement.frame
+          : requestedBounds == null || requestedBounds.isEmpty
+          ? _maximizedFrame(placement.monitorId, state.viewSize)
+          : requestedBounds;
+      final normalFrame = placement.maximized
+          ? placement.restoreFrame ?? maximizedFrame
+          : placement.fullscreenRestoreFrame ?? placement.frame;
+      final maximized = placement.copyWith(
+        frame: maximizedFrame,
+        maximized: true,
+        minimized: false,
+        fullscreen: false,
+        dragging: false,
+        restoreFrame: normalFrame,
+        clearFullscreenRestoreFrame: true,
+      );
+      next[objectId] = maximized;
+      _pendingFlutterProposedFrames[objectId] = maximized.frame;
+    } else if (placement.maximized) {
       final restored = placement.copyWith(
         frame: _clampFrame(
           placement.restoreFrame ?? placement.frame,

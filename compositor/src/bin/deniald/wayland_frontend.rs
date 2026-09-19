@@ -200,6 +200,9 @@ mod window_management;
 #[cfg(feature = "flutter")]
 #[path = "wayland_frontend/window_outputs.rs"]
 mod window_outputs;
+#[cfg(feature = "flutter")]
+#[path = "wayland_frontend/window_presentation.rs"]
+mod window_presentation;
 #[path = "wayland_frontend/window_state.rs"]
 mod window_state;
 #[cfg(feature = "flutter")]
@@ -477,9 +480,7 @@ pub(super) struct WaylandFrontend {
     layout_restore_geometries: HashMap<ObjectId, Rectangle<i32, Logical>>,
     layout_insertion_anchors: HashMap<ObjectId, ObjectId>,
     #[cfg(feature = "flutter")]
-    shell_maximize_restore_geometries: HashMap<ObjectId, Rectangle<i32, Logical>>,
-    #[cfg(feature = "flutter")]
-    shell_fullscreen_restore_geometries: HashMap<ObjectId, Rectangle<i32, Logical>>,
+    shell_window_presentations: HashMap<ObjectId, window_presentation::ShellWindowPresentation>,
     #[cfg(feature = "flutter")]
     shell_vertical_restore_geometries: HashMap<ObjectId, (i32, i32)>,
     #[cfg(feature = "flutter")]
@@ -488,8 +489,6 @@ pub(super) struct WaylandFrontend {
     input_layout: Option<InputLayoutSnapshot>,
     #[cfg(feature = "flutter")]
     shell_keyboard_focus: Option<KeyboardFocusTarget>,
-    #[cfg(feature = "flutter")]
-    shell_fullscreen_locks: HashSet<ObjectId>,
     #[cfg(feature = "flutter")]
     pinned_windows: HashSet<u64>,
     #[cfg(feature = "flutter")]

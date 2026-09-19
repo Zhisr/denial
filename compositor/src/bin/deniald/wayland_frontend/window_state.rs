@@ -1,6 +1,8 @@
 //! Window identity, placement, membership, and local-shell state.
 
 use super::managed_window::{ClientWindowState, ManagedWindow};
+#[cfg(feature = "flutter")]
+use super::window_presentation::{ShellFullscreenUnderlay, ShellWindowPresentation};
 use super::*;
 
 #[cfg(feature = "flutter")]
@@ -251,7 +253,12 @@ impl WaylandFrontend {
     #[cfg(feature = "flutter")]
     pub(super) fn window_shell_fullscreen_locked(&self, window: &Window) -> bool {
         self.window_root_surface(window)
-            .is_some_and(|root_surface| self.shell_fullscreen_locks.contains(&root_surface.id()))
+            .and_then(|root_surface| {
+                self.shell_window_presentations
+                    .get(&root_surface.id())
+                    .copied()
+            })
+            .is_some_and(ShellWindowPresentation::is_fullscreen)
     }
 
     /// Resolves the presentation state of every managed client window.
@@ -266,17 +273,20 @@ impl WaylandFrontend {
             .map(|facts| facts.client_state)
             .unwrap_or_else(ClientWindowState::default);
         let root = self.window_root_surface(window);
-        let shell_fullscreen = root
+        let shell_presentation = root
             .as_ref()
-            .is_some_and(|root| self.shell_fullscreen_locks.contains(&root.id()));
-        let shell_maximized = root.as_ref().is_some_and(|root| {
-            self.shell_maximize_restore_geometries
-                .contains_key(&root.id())
-        });
+            .and_then(|root| self.shell_window_presentations.get(&root.id()).copied());
+        let shell_fullscreen =
+            shell_presentation.is_some_and(ShellWindowPresentation::is_fullscreen);
+        let shell_maximized =
+            shell_presentation.is_some_and(ShellWindowPresentation::has_maximized_underlay);
+        let layout_maximized = root
+            .as_ref()
+            .is_some_and(|root| self.window_layout.is_maximized(&root.id()));
         let fullscreen = client.fullscreen || shell_fullscreen;
         ManagedWindowPresentation {
             fullscreen,
-            maximized: !fullscreen && (client.maximized || shell_maximized),
+            maximized: !fullscreen && (client.maximized || shell_maximized || layout_maximized),
             server_side_decorated: facts.is_some_and(|facts| facts.server_side_decorated),
         }
     }
@@ -297,7 +307,11 @@ impl WaylandFrontend {
         let Some(root_surface) = self.window_root_surface(window) else {
             return false;
         };
-        if self.shell_fullscreen_locks.contains(&root_surface.id())
+        if self
+            .shell_window_presentations
+            .get(&root_surface.id())
+            .copied()
+            .is_some_and(ShellWindowPresentation::is_fullscreen)
             || self
                 .window_geometry_intents
                 .get(&root_surface.id())
@@ -503,9 +517,17 @@ impl WaylandFrontend {
             .map_or(state, |root| WindowPlacementState {
                 maximized: state.maximized
                     || self
-                        .shell_maximize_restore_geometries
-                        .contains_key(&root.id()),
-                fullscreen: state.fullscreen || self.shell_fullscreen_locks.contains(&root.id()),
+                        .shell_window_presentations
+                        .get(&root.id())
+                        .copied()
+                        .is_some_and(ShellWindowPresentation::has_maximized_underlay)
+                    || self.window_layout.is_maximized(&root.id()),
+                fullscreen: state.fullscreen
+                    || self
+                        .shell_window_presentations
+                        .get(&root.id())
+                        .copied()
+                        .is_some_and(ShellWindowPresentation::is_fullscreen),
             });
         state
     }
@@ -531,24 +553,39 @@ impl WaylandFrontend {
         };
         let object_id = root.id();
         let server_frame = shell_draws_server_frame(window);
-        let mut target = normal_geometry;
+        let mut maximized_target = normal_geometry;
         if state.maximized {
             let frame = self.maximize_work_area(Some(&output), output_geometry);
-            target = maximized_shell_content_geometry(
+            maximized_target = maximized_shell_content_geometry(
                 frame,
                 server_frame,
                 self.window_layout_manages_geometry(),
             );
-            self.shell_maximize_restore_geometries
-                .insert(object_id.clone(), normal_geometry);
         }
         if state.fullscreen {
-            target = shell_content_geometry(output_geometry, server_frame);
-            self.shell_fullscreen_restore_geometries
-                .insert(object_id.clone(), normal_geometry);
-            self.shell_fullscreen_locks.insert(object_id);
+            self.shell_window_presentations.insert(
+                object_id,
+                ShellWindowPresentation::Fullscreen {
+                    return_geometry: if state.maximized {
+                        maximized_target
+                    } else {
+                        normal_geometry
+                    },
+                    underlay: if state.maximized {
+                        ShellFullscreenUnderlay::Maximized { normal_geometry }
+                    } else {
+                        ShellFullscreenUnderlay::Normal
+                    },
+                },
+            );
+            shell_content_geometry(output_geometry, server_frame)
+        } else {
+            self.shell_window_presentations.insert(
+                object_id,
+                ShellWindowPresentation::Maximized { normal_geometry },
+            );
+            maximized_target
         }
-        target
     }
 
     pub(super) fn restore_xdg_window_placement(
@@ -781,17 +818,10 @@ impl WaylandFrontend {
                 }
                 #[cfg(feature = "flutter")]
                 if let Some(geometry) = self
-                    .shell_maximize_restore_geometries
+                    .shell_window_presentations
                     .get(&root.id())
                     .copied()
-                {
-                    return Some(geometry);
-                }
-                #[cfg(feature = "flutter")]
-                if let Some(geometry) = self
-                    .shell_fullscreen_restore_geometries
-                    .get(&root.id())
-                    .copied()
+                    .map(ShellWindowPresentation::normal_geometry)
                 {
                     return Some(geometry);
                 }
@@ -1209,14 +1239,15 @@ impl WaylandFrontend {
             let maximized = presentation.maximized;
             if fullscreen || maximized {
                 if let Some(restore) = self
-                    .shell_maximize_restore_geometries
+                    .shell_window_presentations
                     .get(&root_surface.id())
-                    .or_else(|| {
-                        self.shell_fullscreen_restore_geometries
-                            .get(&root_surface.id())
-                    })
-                    .or_else(|| self.restore_window_geometries.get(&root_surface.id()))
                     .copied()
+                    .map(ShellWindowPresentation::normal_geometry)
+                    .or_else(|| {
+                        self.restore_window_geometries
+                            .get(&root_surface.id())
+                            .copied()
+                    })
                     && let Some(placement) = self.window_placement(
                         window,
                         restore,
@@ -1526,9 +1557,7 @@ impl WaylandFrontend {
         self.placed_transient_parents
             .retain(|_, parent| parent != &object_id);
         #[cfg(feature = "flutter")]
-        self.shell_maximize_restore_geometries.remove(&object_id);
-        #[cfg(feature = "flutter")]
-        self.shell_fullscreen_restore_geometries.remove(&object_id);
+        self.shell_window_presentations.remove(&object_id);
         #[cfg(feature = "flutter")]
         self.shell_vertical_restore_geometries.remove(&object_id);
         if matches!(
@@ -1584,7 +1613,6 @@ impl WaylandFrontend {
                 self.pinned_windows.remove(&stable_id);
                 self.forget_window_workspace(stable_id);
             }
-            self.shell_fullscreen_locks.remove(&object_id);
             if let Some(stable_id) = stable_id {
                 self.pointer_constraint_escape.forget_window(stable_id);
                 self.pending_cursor_buffer_surface_ids.remove(&stable_id);

@@ -22,6 +22,8 @@ use super::super::window_layout::{
 use super::managed_window::ManagedWindow;
 #[cfg(feature = "flutter")]
 use super::shell_content_geometry;
+#[cfg(feature = "flutter")]
+use super::window_presentation::{ShellFullscreenUnderlay, ShellWindowPresentation};
 use super::{WaylandFrontend, WindowGeometryAuthority};
 
 #[cfg(feature = "flutter")]
@@ -1055,17 +1057,8 @@ impl WaylandFrontend {
                 self.restore_window_geometries
                     .insert(window_id.clone(), restore);
                 #[cfg(feature = "flutter")]
-                {
-                    if let Some(shell_restore) =
-                        self.shell_maximize_restore_geometries.get_mut(&window_id)
-                    {
-                        *shell_restore = restore;
-                    }
-                    if let Some(shell_restore) =
-                        self.shell_fullscreen_restore_geometries.get_mut(&window_id)
-                    {
-                        *shell_restore = restore;
-                    }
+                if let Some(presentation) = self.shell_window_presentations.get_mut(&window_id) {
+                    presentation.update_normal_geometry(restore);
                 }
                 continue;
             }
@@ -1141,8 +1134,10 @@ impl WaylandFrontend {
             ManagedWindow::new(window).is_some_and(|window| window.facts().client_state.maximized);
         #[cfg(feature = "flutter")]
         let shell_maximized = self.window_root_surface(window).is_some_and(|root| {
-            self.shell_maximize_restore_geometries
-                .contains_key(&root.id())
+            self.shell_window_presentations
+                .get(&root.id())
+                .copied()
+                .is_some_and(ShellWindowPresentation::has_maximized_underlay)
         });
         #[cfg(not(feature = "flutter"))]
         let shell_maximized = false;
@@ -1155,10 +1150,28 @@ impl WaylandFrontend {
             return false;
         }
         #[cfg(feature = "flutter")]
-        let removed_shell_overlay = self
-            .shell_maximize_restore_geometries
-            .remove(window)
-            .is_some();
+        let removed_shell_overlay = match self.shell_window_presentations.remove(window) {
+            Some(ShellWindowPresentation::Maximized { .. }) => true,
+            Some(ShellWindowPresentation::Fullscreen {
+                return_geometry,
+                underlay: ShellFullscreenUnderlay::Maximized { normal_geometry },
+            }) => {
+                self.shell_window_presentations.insert(
+                    window.clone(),
+                    ShellWindowPresentation::Fullscreen {
+                        return_geometry,
+                        underlay: ShellFullscreenUnderlay::LayoutMaximized { normal_geometry },
+                    },
+                );
+                true
+            }
+            Some(presentation) => {
+                self.shell_window_presentations
+                    .insert(window.clone(), presentation);
+                false
+            }
+            None => false,
+        };
         #[cfg(not(feature = "flutter"))]
         let removed_shell_overlay = false;
         changed || removed_shell_overlay
@@ -1170,8 +1183,7 @@ impl WaylandFrontend {
             let root = self.window_root_surface(window);
             if root.as_ref().is_some_and(|root| {
                 let id = root.id();
-                self.shell_fullscreen_locks.contains(&id)
-                    || self.shell_maximize_restore_geometries.contains_key(&id)
+                self.shell_window_presentations.contains_key(&id)
                     || self
                         .window_geometry_intents
                         .get(&id)
@@ -1193,10 +1205,10 @@ impl WaylandFrontend {
         };
         #[cfg(feature = "flutter")]
         if let Some(restore) = self
-            .shell_maximize_restore_geometries
+            .shell_window_presentations
             .get(&root.id())
-            .or_else(|| self.shell_fullscreen_restore_geometries.get(&root.id()))
             .copied()
+            .map(ShellWindowPresentation::normal_geometry)
         {
             return restore;
         }

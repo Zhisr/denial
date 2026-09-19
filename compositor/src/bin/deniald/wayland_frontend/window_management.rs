@@ -21,6 +21,8 @@ use super::super::window_placement_store::RestoredWindowPlacement;
 use super::super::wire::{
     WindowAction, WindowCommand, WindowGeometry, WindowPlacementChange, WindowPlacementPhase,
 };
+#[cfg(feature = "flutter")]
+use super::WaylandFrontend;
 use super::WindowGeometryAuthority;
 #[cfg(feature = "flutter")]
 use super::clamp_window_geometry;
@@ -28,6 +30,10 @@ use super::clamp_window_geometry;
 use super::focus::clear_keyboard_focus;
 use super::focus::request_keyboard_focus;
 use super::managed_window::{ClientStateRequestKind, ManagedWindow};
+#[cfg(feature = "flutter")]
+use super::window_presentation::{
+    ShellFixedMaximizeTransition, ShellFullscreenExit, ShellWindowPresentation,
+};
 
 fn bound_geometry_size(mut geometry: Rectangle<i32, Logical>) -> Rectangle<i32, Logical> {
     geometry.size = Size::from((
@@ -117,6 +123,21 @@ fn configure_shell_owned_geometry(
         .as_mut()
         .expect("missing Wayland frontend")
         .set_window_geometry_target_with_authority(window, target, authority);
+}
+
+#[cfg(feature = "flutter")]
+fn shell_maximized_geometry(
+    frontend: &WaylandFrontend,
+    window: &Window,
+    from: Rectangle<i32, Logical>,
+) -> Option<Rectangle<i32, Logical>> {
+    let output = frontend.output_for_geometry(from)?.output.clone();
+    let output_geometry = frontend.space.output_geometry(&output)?;
+    Some(maximized_shell_content_geometry(
+        frontend.maximize_work_area(Some(&output), output_geometry),
+        shell_draws_server_frame(window),
+        frontend.window_layout_manages_geometry(),
+    ))
 }
 
 #[cfg(feature = "flutter")]
@@ -613,28 +634,17 @@ pub(in super::super) fn apply_window_commands(
                         let destination_bounds = frontend
                             .maximize_work_area(Some(&destination_output), destination_geometry);
                         let surface_id = root_surface.id();
-                        if let Some(restore) = frontend
-                            .shell_maximize_restore_geometries
-                            .get_mut(&surface_id)
+                        if let Some(presentation) =
+                            frontend.shell_window_presentations.get_mut(&surface_id)
                         {
-                            *restore = transfer_restore_geometry(
-                                *restore,
-                                source_geometry,
-                                destination_geometry,
-                                destination_bounds,
-                            );
-                            transferred_shell_restore = true;
-                        }
-                        if let Some(restore) = frontend
-                            .shell_fullscreen_restore_geometries
-                            .get_mut(&surface_id)
-                        {
-                            *restore = transfer_restore_geometry(
-                                *restore,
-                                source_geometry,
-                                destination_geometry,
-                                destination_bounds,
-                            );
+                            presentation.map_geometries(|geometry| {
+                                transfer_restore_geometry(
+                                    geometry,
+                                    source_geometry,
+                                    destination_geometry,
+                                    destination_bounds,
+                                )
+                            });
                             transferred_shell_restore = true;
                         }
                     }
@@ -1394,9 +1404,8 @@ fn close_window(window: &Window) -> bool {
 }
 
 #[cfg(feature = "flutter")]
-/// Applies SUPER+W maximize. Scrolling layouts toggle their authoritative
-/// column state directly, then publish the matching client state in the same
-/// arrangement pass. Fixed layouts retain the legacy shell-owned overlay path.
+/// Applies SUPER+W maximize. Scrolling layouts own maximize in their retained
+/// node; fixed layouts own it in the window's shell presentation record.
 pub(super) fn toggle_shell_maximize_focused_toplevel(state: &mut RuntimeState) -> bool {
     if let Some(window_id) = focused_local_window(state) {
         queue_local_window_action(state, window_id, WindowAction::ToggleMaximize);
@@ -1415,8 +1424,13 @@ pub(super) fn toggle_shell_maximize_focused_toplevel(state: &mut RuntimeState) -
         .expect("missing Wayland frontend")
         .window_is_scrolling_layout_managed(&window);
     if scrolling_maximize {
-        if client.fullscreen
-            || state
+        let presentation = state
+            .wayland
+            .as_ref()
+            .expect("missing Wayland frontend")
+            .managed_window_presentation(&window);
+        if !presentation.fullscreen
+            && state
                 .wayland
                 .as_ref()
                 .expect("missing Wayland frontend")
@@ -1426,9 +1440,22 @@ pub(super) fn toggle_shell_maximize_focused_toplevel(state: &mut RuntimeState) -
         }
         let maximized = {
             let frontend = state.wayland.as_mut().expect("missing Wayland frontend");
-            let maximized = !frontend.window_is_layout_maximized(&window);
-            if !frontend.set_layout_window_maximized(&window, maximized) {
+            let Some(root) = frontend.window_root_surface(&window) else {
+                return false;
+            };
+            let surface_id = root.id();
+            let maximized =
+                presentation.fullscreen || !frontend.window_is_layout_maximized(&window);
+            let layout_maximized = frontend.window_is_layout_maximized(&window);
+            if layout_maximized != maximized
+                && !frontend.set_layout_window_maximized(&window, maximized)
+            {
                 return true;
+            }
+            if presentation.fullscreen {
+                frontend.shell_window_presentations.remove(&surface_id);
+                frontend.restore_window_geometries.remove(&surface_id);
+                clear_client_geometry_constraints(&window);
             }
             frontend.arrange_layout_windows();
             maximized
@@ -1446,49 +1473,100 @@ pub(super) fn toggle_shell_maximize_focused_toplevel(state: &mut RuntimeState) -
         return true;
     }
 
-    let (target, action) = {
+    let (target, action, arrange_layout) = {
         let frontend = state.wayland.as_mut().expect("missing Wayland frontend");
-        if client.fullscreen || frontend.window_geometry_locked(&window) {
-            // SUPER+W is a no-op while true fullscreen is active.
+        let presentation = frontend.managed_window_presentation(&window);
+        if !presentation.fullscreen && frontend.window_geometry_locked(&window) {
             return true;
         }
         let Some(root_surface) = frontend.window_root_surface(&window) else {
             return false;
         };
         let surface_id = root_surface.id();
-        if let Some(restore) = frontend
-            .shell_maximize_restore_geometries
-            .remove(&surface_id)
-        {
-            frontend.restore_window_geometries.remove(&surface_id);
-            (bound_geometry_size(restore), WindowAction::Restore)
-        } else if client.maximized {
-            let restore = frontend
-                .restore_window_geometries
-                .remove(&surface_id)
-                .unwrap_or_else(|| frontend.window_geometry_target(&window));
-            (bound_geometry_size(restore), WindowAction::Restore)
-        } else {
-            let restore = bound_geometry_size(frontend.window_geometry_target(&window));
-            let Some(output) = frontend
-                .output_for_geometry(restore)
-                .map(|entry| entry.output.clone())
-            else {
-                return false;
-            };
-            let Some(output_geometry) = frontend.space.output_geometry(&output) else {
-                return false;
-            };
-            let frame = frontend.maximize_work_area(Some(&output), output_geometry);
-            let target = maximized_shell_content_geometry(
-                frame,
-                shell_draws_server_frame(&window),
-                frontend.window_layout_manages_geometry(),
-            );
-            frontend
-                .shell_maximize_restore_geometries
-                .insert(surface_id, restore);
-            (target, WindowAction::Maximize)
+        let shell_presentation = frontend.shell_window_presentations.remove(&surface_id);
+        let shell_transition = shell_presentation.map(|presentation| {
+            if client.fullscreen
+                && let ShellWindowPresentation::Maximized { normal_geometry } = presentation
+            {
+                ShellFixedMaximizeTransition::SelectMaximized {
+                    normal_geometry,
+                    existing_geometry: None,
+                }
+            } else {
+                presentation.toggle_fixed_maximize()
+            }
+        });
+        match shell_transition {
+            Some(ShellFixedMaximizeTransition::RestoreNormal { geometry }) => {
+                frontend.restore_window_geometries.remove(&surface_id);
+                (
+                    bound_geometry_size(geometry),
+                    WindowAction::Restore,
+                    frontend.window_is_layout_managed(&window),
+                )
+            }
+            Some(ShellFixedMaximizeTransition::SelectMaximized {
+                normal_geometry,
+                existing_geometry,
+            }) => {
+                let target = if let Some(existing_geometry) = existing_geometry {
+                    bound_geometry_size(existing_geometry)
+                } else if let Some(target) =
+                    shell_maximized_geometry(frontend, &window, normal_geometry)
+                {
+                    target
+                } else {
+                    if let Some(presentation) = shell_presentation {
+                        frontend
+                            .shell_window_presentations
+                            .insert(surface_id, presentation);
+                    }
+                    return false;
+                };
+                frontend.shell_window_presentations.insert(
+                    surface_id,
+                    ShellWindowPresentation::Maximized { normal_geometry },
+                );
+                (target, WindowAction::Maximize, false)
+            }
+            None if client.fullscreen => {
+                let normal_geometry = frontend
+                    .restore_window_geometries
+                    .remove(&surface_id)
+                    .unwrap_or_else(|| frontend.window_geometry_target(&window));
+                let Some(target) = shell_maximized_geometry(frontend, &window, normal_geometry)
+                else {
+                    return false;
+                };
+                frontend.shell_window_presentations.insert(
+                    surface_id,
+                    ShellWindowPresentation::Maximized { normal_geometry },
+                );
+                (target, WindowAction::Maximize, false)
+            }
+            None if client.maximized => {
+                let normal_geometry = frontend
+                    .restore_window_geometries
+                    .remove(&surface_id)
+                    .unwrap_or_else(|| frontend.window_geometry_target(&window));
+                (
+                    bound_geometry_size(normal_geometry),
+                    WindowAction::Restore,
+                    frontend.window_is_layout_managed(&window),
+                )
+            }
+            None => {
+                let normal_geometry = bound_geometry_size(frontend.window_geometry_target(&window));
+                let Some(target) = shell_maximized_geometry(frontend, &window, normal_geometry)
+                else {
+                    return false;
+                };
+                frontend.shell_window_presentations.insert(
+                    surface_id,
+                    ShellWindowPresentation::Maximized { normal_geometry },
+                );
+                (target, WindowAction::Maximize, false)
+            }
         }
     };
 
@@ -1498,7 +1576,7 @@ pub(super) fn toggle_shell_maximize_focused_toplevel(state: &mut RuntimeState) -
         WindowGeometryAuthority::Pending
     };
     configure_shell_owned_geometry(state, &window, target, authority);
-    if matches!(action, WindowAction::Restore) {
+    if arrange_layout {
         state
             .wayland
             .as_mut()
@@ -1672,6 +1750,9 @@ pub(super) fn toggle_shell_fullscreen_focused_toplevel(state: &mut RuntimeState)
     let Some(window) = focused_window(state) else {
         return false;
     };
+    let client = ManagedWindow::new(&window)
+        .map(|window| window.facts().client_state)
+        .unwrap_or_default();
 
     // SUPER+F is compositor-owned. Rust resolves one physical output and
     // applies the complete geometry before Flutter mirrors the state; the
@@ -1685,21 +1766,78 @@ pub(super) fn toggle_shell_fullscreen_focused_toplevel(state: &mut RuntimeState)
         let presentation = frontend.managed_window_presentation(&window);
         let current = bound_geometry_size(frontend.window_geometry_target(&window));
         if presentation.fullscreen {
-            frontend.shell_fullscreen_locks.remove(&surface_id);
-            let target = frontend
-                .shell_fullscreen_restore_geometries
-                .remove(&surface_id)
-                .or_else(|| frontend.restore_window_geometries.remove(&surface_id))
-                .unwrap_or(current);
-            let arrange_layout = frontend.window_is_layout_managed(&window)
-                && !frontend
-                    .shell_maximize_restore_geometries
-                    .contains_key(&surface_id);
-            (
-                bound_geometry_size(target),
-                WindowAction::Restore,
-                arrange_layout,
-            )
+            let shell_presentation = frontend.shell_window_presentations.remove(&surface_id);
+            match shell_presentation.and_then(ShellWindowPresentation::exit_fullscreen) {
+                Some(ShellFullscreenExit::Normal { geometry }) => (
+                    bound_geometry_size(geometry),
+                    WindowAction::Restore,
+                    frontend.window_is_layout_managed(&window),
+                ),
+                Some(ShellFullscreenExit::Maximized {
+                    normal_geometry,
+                    geometry,
+                    layout_owned,
+                }) => {
+                    if layout_owned && frontend.window_is_scrolling_layout_managed(&window) {
+                        frontend.set_layout_window_maximized(&window, true);
+                        (bound_geometry_size(geometry), WindowAction::Maximize, true)
+                    } else {
+                        let target = if layout_owned {
+                            let Some(target) =
+                                shell_maximized_geometry(frontend, &window, normal_geometry)
+                            else {
+                                if let Some(presentation) = shell_presentation {
+                                    frontend
+                                        .shell_window_presentations
+                                        .insert(surface_id, presentation);
+                                }
+                                return false;
+                            };
+                            target
+                        } else {
+                            bound_geometry_size(geometry)
+                        };
+                        frontend.shell_window_presentations.insert(
+                            surface_id,
+                            ShellWindowPresentation::Maximized { normal_geometry },
+                        );
+                        (target, WindowAction::Maximize, false)
+                    }
+                }
+                None if let Some(ShellWindowPresentation::Maximized { normal_geometry }) =
+                    shell_presentation =>
+                {
+                    let Some(target) = shell_maximized_geometry(frontend, &window, normal_geometry)
+                    else {
+                        frontend.shell_window_presentations.insert(
+                            surface_id,
+                            ShellWindowPresentation::Maximized { normal_geometry },
+                        );
+                        return false;
+                    };
+                    frontend.shell_window_presentations.insert(
+                        surface_id,
+                        ShellWindowPresentation::Maximized { normal_geometry },
+                    );
+                    (target, WindowAction::Maximize, false)
+                }
+                None => {
+                    let target = frontend
+                        .restore_window_geometries
+                        .remove(&surface_id)
+                        .unwrap_or(current);
+                    let layout_maximized = frontend.window_is_layout_maximized(&window);
+                    (
+                        bound_geometry_size(target),
+                        if layout_maximized {
+                            WindowAction::Maximize
+                        } else {
+                            WindowAction::Restore
+                        },
+                        frontend.window_is_layout_managed(&window),
+                    )
+                }
+            }
         } else {
             if frontend.exact_window_geometry(&window).is_some() {
                 return true;
@@ -1723,10 +1861,30 @@ pub(super) fn toggle_shell_fullscreen_focused_toplevel(state: &mut RuntimeState)
             let Some(target) = output_geometry else {
                 return false;
             };
-            frontend
-                .shell_fullscreen_restore_geometries
-                .insert(surface_id.clone(), current);
-            frontend.shell_fullscreen_locks.insert(surface_id);
+            let previous = frontend
+                .shell_window_presentations
+                .remove(&surface_id)
+                .or_else(|| {
+                    client
+                        .maximized
+                        .then(|| ShellWindowPresentation::Maximized {
+                            normal_geometry: frontend
+                                .restore_window_geometries
+                                .remove(&surface_id)
+                                .unwrap_or(current),
+                        })
+                });
+            let layout_normal_geometry = frontend.window_is_layout_maximized(&window).then(|| {
+                frontend
+                    .layout_restore_geometries
+                    .get(&surface_id)
+                    .copied()
+                    .unwrap_or(current)
+            });
+            frontend.shell_window_presentations.insert(
+                surface_id,
+                ShellWindowPresentation::fullscreen(current, previous, layout_normal_geometry),
+            );
             (target, WindowAction::Fullscreen, false)
         }
     };
@@ -1739,7 +1897,7 @@ pub(super) fn toggle_shell_fullscreen_focused_toplevel(state: &mut RuntimeState)
             .expect("missing Wayland frontend")
             .arrange_layout_windows();
     } else {
-        let authority = if matches!(action, WindowAction::Fullscreen) {
+        let authority = if matches!(action, WindowAction::Fullscreen | WindowAction::Maximize) {
             WindowGeometryAuthority::Shell
         } else {
             WindowGeometryAuthority::Pending
