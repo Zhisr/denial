@@ -70,13 +70,9 @@ impl WaylandFrontend {
             .map(|index| &self.outputs[index])
     }
 
-    /// `geometry` minus the shell system-bar strip when the given output (or,
-    /// with `output` unknown, the output whose logical rect equals `geometry`)
-    /// hosts the bar, and minus the configured maximize padding on every
-    /// bar-free edge. Mirrors the Dart shell's `DisplayLayout.workAreaOf`
-    /// so a client-requested maximize configure lands on the same rect the
-    /// shell places maximized windows into. True fullscreen keeps the full
-    /// output geometry and must not call this.
+    /// The inset working area used by ordinary managed layouts and legacy
+    /// shell-owned maximize. The system bar consumes its edge; configured
+    /// layout padding consumes every bar-free edge.
     pub(super) fn maximize_work_area(
         &self,
         output: Option<&Output>,
@@ -198,6 +194,7 @@ impl WaylandFrontend {
 
             let removed_id = current.id;
             self.fail_output_power(removed_id);
+            self.gamma_control_failed(removed_id);
             self.fail_screencopies_for_output(removed_id);
             let removed = self.outputs.swap_remove(index);
             {
@@ -575,6 +572,33 @@ pub(super) fn clamp_window_geometry(
     )
 }
 
+/// Centers a client-sized transient over its parent and keeps its origin on
+/// the parent's output.
+///
+/// Oversized clients retain their chosen dimensions and align to the output's
+/// leading edge. Size negotiation remains a protocol concern; placement must
+/// not silently turn into a resize.
+pub(super) fn centered_transient_geometry(
+    size: Size<i32, Logical>,
+    parent: Rectangle<i32, Logical>,
+    output: Rectangle<i32, Logical>,
+) -> Rectangle<i32, Logical> {
+    let centered = Rectangle::new(
+        Point::from((
+            parent
+                .loc
+                .x
+                .saturating_add(parent.size.w.saturating_sub(size.w) / 2),
+            parent
+                .loc
+                .y
+                .saturating_add(parent.size.h.saturating_sub(size.h) / 2),
+        )),
+        size,
+    );
+    clamp_window_geometry(centered, output)
+}
+
 pub(super) fn migrate_window_geometry(
     geometry: Rectangle<i32, Logical>,
     old_outputs: &[(OutputId, Rectangle<i32, Logical>)],
@@ -661,5 +685,43 @@ fn output_transform(transform: OutputTransform) -> Transform {
         OutputTransform::Flipped90 => Transform::Flipped90,
         OutputTransform::Flipped180 => Transform::Flipped180,
         OutputTransform::Flipped270 => Transform::Flipped270,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn transient_geometry_centers_over_parent() {
+        let output = Rectangle::new((0, 0).into(), (1920, 1080).into());
+        let parent = Rectangle::new((100, 50).into(), (800, 600).into());
+
+        assert_eq!(
+            centered_transient_geometry((300, 200).into(), parent, output),
+            Rectangle::new((350, 250).into(), (300, 200).into()),
+        );
+    }
+
+    #[test]
+    fn transient_geometry_stays_on_parent_output() {
+        let output = Rectangle::new((0, 0).into(), (1920, 1080).into());
+        let parent = Rectangle::new((1800, 900).into(), (400, 300).into());
+
+        assert_eq!(
+            centered_transient_geometry((500, 400).into(), parent, output),
+            Rectangle::new((1420, 680).into(), (500, 400).into()),
+        );
+    }
+
+    #[test]
+    fn oversized_transient_keeps_client_size() {
+        let output = Rectangle::new((100, 200).into(), (1920, 1080).into());
+        let parent = Rectangle::new((400, 500).into(), (800, 600).into());
+
+        assert_eq!(
+            centered_transient_geometry((2200, 1200).into(), parent, output),
+            Rectangle::new((100, 200).into(), (2200, 1200).into()),
+        );
     }
 }

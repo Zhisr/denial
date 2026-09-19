@@ -551,6 +551,28 @@ impl FlutterRuntime {
         self.pending_brightness_requests.drain(..)
     }
 
+    pub fn drain_software_dimming_requests(
+        &mut self,
+    ) -> impl Iterator<Item = crate::gamma_control::SoftwareDimmingRequest> + '_ {
+        self.pending_software_dimming_requests.drain(..)
+    }
+
+    pub fn send_software_dimming_state(
+        &mut self,
+        state: crate::gamma_control::SoftwareDimmingState,
+    ) -> Result<(), Box<dyn Error>> {
+        let monitor_id = i64::try_from(state.output.0)
+            .map_err(|_| "software-dimming output id exceeds the platform packet range")?;
+        let mut packet = [0u8; 10];
+        packet[..8].copy_from_slice(&monitor_id.to_le_bytes());
+        packet[8] = (state.level.clamp(0.0, 1.0) * 100.0).round() as u8;
+        packet[9] = u8::from(state.supported);
+        self.host()
+            .engine()
+            .send_platform_message(SOFTWARE_DIMMING_STATE_CHANNEL, &packet)?;
+        Ok(())
+    }
+
     pub fn drain_ui_development_commands(
         &mut self,
     ) -> impl Iterator<Item = crate::ui_development::UiDevelopmentCommand> + '_ {

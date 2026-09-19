@@ -305,26 +305,34 @@ impl<'a> ManagedWindow<'a> {
         &self,
         target: Rectangle<i32, Logical>,
         force_resize: bool,
+        maximized: bool,
     ) {
         match self.protocol {
             ManagedWindowProtocol::Xdg(toplevel) => {
                 let client_maximized = toplevel_has_state(toplevel, xdg_toplevel::State::Maximized);
-                toplevel.with_pending_state(|pending| {
+                let state_changed = toplevel.with_pending_state(|pending| {
                     pending.states.unset(xdg_toplevel::State::Resizing);
-                    pending.states.unset(xdg_toplevel::State::Maximized);
+                    let changed = if maximized {
+                        pending.states.set(xdg_toplevel::State::Maximized)
+                    } else {
+                        pending.states.unset(xdg_toplevel::State::Maximized)
+                    };
                     pending.size = Some(target.size);
+                    changed
                 });
-                if toplevel.is_initial_configure_sent() && (client_maximized || force_resize) {
+                if toplevel.is_initial_configure_sent()
+                    && (state_changed || client_maximized != maximized || force_resize)
+                {
                     // Force a new serial when a prior configure already cached
                     // this target but the client still presents its old buffer.
                     toplevel.send_configure();
                 }
             }
             ManagedWindowProtocol::X11(surface) => {
-                if surface.is_maximized()
-                    && let Err(error) = surface.set_maximized(false)
-                {
-                    warn!(%error, window = surface.window_id(), "could not clear maximize state for tiled window");
+                if surface.is_maximized() != maximized {
+                    if let Err(error) = surface.set_maximized(maximized) {
+                        warn!(%error, window = surface.window_id(), maximized, "could not update maximize state for tiled window");
+                    }
                 }
             }
         }
@@ -356,6 +364,36 @@ impl<'a> ManagedWindow<'a> {
                 pending.size = Some(size);
             });
             toplevel.send_pending_configure();
+        }
+    }
+
+    /// Requests a speculative client size for a layout drop preview.
+    ///
+    /// The frontend deliberately keeps its authoritative geometry contract
+    /// unchanged. XDG clients receive normal interactive-resize state while
+    /// X11 clients need the complete temporary ConfigureWindow rectangle.
+    #[cfg(feature = "flutter")]
+    pub(super) fn prepare_layout_preview(&self, target: Rectangle<i32, Logical>, finished: bool) {
+        match self.protocol {
+            ManagedWindowProtocol::Xdg(toplevel) if toplevel.wl_surface().is_alive() => {
+                toplevel.with_pending_state(|pending| {
+                    if finished {
+                        pending.states.unset(xdg_toplevel::State::Resizing);
+                    } else {
+                        pending.states.set(xdg_toplevel::State::Resizing);
+                    }
+                    pending.size = Some(target.size);
+                });
+                toplevel.send_pending_configure();
+            }
+            ManagedWindowProtocol::X11(surface)
+                if !surface.is_override_redirect() && surface.last_configure() != target =>
+            {
+                if let Err(error) = surface.configure(target) {
+                    warn!(%error, window = surface.window_id(), "could not configure layout preview geometry");
+                }
+            }
+            _ => {}
         }
     }
 

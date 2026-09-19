@@ -27,6 +27,8 @@ pub(super) struct RuntimeState {
     pub(super) clipboard_deferred_capture: Option<wayland_frontend::DeferredClipboardCapture>,
     pub(super) scene_sync: SceneSyncState,
     pub(super) system_controls: Option<SystemControls>,
+    pub(super) gamma_control: Arc<Mutex<gamma_control::GammaController>>,
+    pub(super) gamma_reapply_requested: bool,
     pub(super) vblank_events: u64,
     #[cfg(feature = "flutter")]
     pub(super) flutter_events: Vec<flutter_runtime::RuntimeEvent>,
@@ -58,6 +60,8 @@ pub(super) struct RuntimeState {
     pub(super) touchpad_devices: BTreeMap<String, smithay::reexports::input::Device>,
     #[cfg(feature = "flutter")]
     pub(super) input_device_capabilities_changed: bool,
+    #[cfg(feature = "flutter")]
+    pub(super) settings_external_change_pending: bool,
     #[cfg(feature = "flutter")]
     pub(super) pending_window_events: PendingWindowEventQueue,
     #[cfg(feature = "flutter")]
@@ -92,6 +96,8 @@ pub(super) struct RuntimeState {
     pub(super) pending_settings_controls: VecDeque<PendingSettingsControl>,
     #[cfg(feature = "flutter")]
     pub(super) pending_system_controls: VecDeque<PendingSystemControl>,
+    #[cfg(feature = "flutter")]
+    pub(super) pending_software_dimming: VecDeque<PendingSoftwareDimming>,
     #[cfg(feature = "flutter")]
     pub(super) pending_system_control_waits: VecDeque<PendingSystemControlWait>,
     #[cfg(feature = "flutter")]

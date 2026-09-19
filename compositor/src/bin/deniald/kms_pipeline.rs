@@ -219,6 +219,10 @@ pub(super) fn apply_hotplug_topology(
     }
     progress.mark_validated();
 
+    // A modeset may reset a CRTC's gamma state even when the same logical
+    // output and CRTC are reused. Reapply Denial's composed LUT after the
+    // transaction (or its rollback) reaches the next event-loop boundary.
+    events.gamma_reapply_requested = true;
     events.pending.clear();
     for candidate in reconciliation
         .scanouts()

@@ -7,10 +7,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../localization/denial_localizations.dart';
+import '../../models/display_layout.dart';
 import '../../models/output_configuration.dart';
+import '../../platform/denial_bridge.dart';
 import '../../state/display_brightness.dart';
 import '../../state/display_layout.dart';
 import '../../state/output_configuration.dart';
+import '../../state/shell_controller.dart';
 import '../../theme/motion.dart';
 import '../../theme/shell_color_scheme.dart';
 import '../../theme/shell_theme.dart';
@@ -53,6 +56,15 @@ const settingsDisplayConfirmationDialogKey = ValueKey<String>(
 const settingsKeepDisplayConfigurationKey = ValueKey<String>(
   'settings-keep-display-configuration',
 );
+const settingsDisplayBrightnessCardKey = ValueKey<String>(
+  'settings-display-brightness-card',
+);
+
+ValueKey<String> settingsHardwareBrightnessSliderKey(int monitorId) =>
+    ValueKey<String>('settings-hardware-brightness-$monitorId');
+
+ValueKey<String> settingsSoftwareDimmingSliderKey(int monitorId) =>
+    ValueKey<String>('settings-software-dimming-$monitorId');
 
 class SettingsDisplaysPage extends ConsumerWidget {
   const SettingsDisplaysPage({super.key});
@@ -1874,6 +1886,7 @@ class _DisplayBrightnessCard extends ConsumerWidget {
     final brightness = ref.watch(displayBrightnessProvider);
     final controller = ref.read(displayBrightnessProvider.notifier);
     return SettingsCardGroup(
+      key: settingsDisplayBrightnessCardKey,
       children: <Widget>[
         SettingsSection(
           title: l10n.settingsDisplayBrightnessTitle,
@@ -1883,6 +1896,8 @@ class _DisplayBrightnessCard extends ConsumerWidget {
                   message: l10n.settingsDisplayInformationUnavailable,
                 )
               : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: <Widget>[
                     for (
                       var index = 0;
@@ -1892,9 +1907,15 @@ class _DisplayBrightnessCard extends ConsumerWidget {
                       Builder(
                         builder: (context) {
                           final output = layout.outputs[index];
-                          final level =
-                              brightness.levels[output.monitorId] ?? 0.72;
+                          final level = _safeDisplayLevel(
+                            brightness.levels[output.monitorId],
+                            fallback: 0.72,
+                            minimum: 0.01,
+                          );
                           return SettingsSlider(
+                            key: settingsHardwareBrightnessSliderKey(
+                              output.monitorId,
+                            ),
                             label: l10n.outputBrightnessSemantics(output.name),
                             value: level,
                             minimum: 0.01,
@@ -1913,6 +1934,12 @@ class _DisplayBrightnessCard extends ConsumerWidget {
                           );
                         },
                       ),
+                      _DisplaySoftwareDimmingControl(
+                        key: ValueKey<String>(
+                          'display-software-dimming-control-${layout.outputs[index].monitorId}',
+                        ),
+                        output: layout.outputs[index],
+                      ),
                       if (index != layout.outputs.length - 1)
                         Divider(
                           height: 18,
@@ -1923,6 +1950,141 @@ class _DisplayBrightnessCard extends ConsumerWidget {
                 ),
         ),
       ],
+    );
+  }
+}
+
+double _safeDisplayLevel(
+  double? value, {
+  required double fallback,
+  required double minimum,
+}) {
+  if (value == null || !value.isFinite) {
+    return fallback;
+  }
+  return value.clamp(minimum, 1.0).toDouble();
+}
+
+class _DisplaySoftwareDimmingControl extends ConsumerStatefulWidget {
+  const _DisplaySoftwareDimmingControl({required this.output, super.key});
+
+  final DisplayOutput output;
+
+  @override
+  ConsumerState<_DisplaySoftwareDimmingControl> createState() =>
+      _DisplaySoftwareDimmingControlState();
+}
+
+class _DisplaySoftwareDimmingControlState
+    extends ConsumerState<_DisplaySoftwareDimmingControl> {
+  static const Duration _commitInterval = Duration(milliseconds: 90);
+  static const double _minimumLevel = 0.25;
+
+  late final DenialBridge _bridge;
+  StreamSubscription<DenialSoftwareDimmingState>? _subscription;
+  Timer? _commitTimer;
+  double _level = 1;
+  var _supported = false;
+  var _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _bridge = ref.read(denialBridgeProvider);
+    _subscription = _bridge.softwareDimmingStates.listen((update) {
+      if (update.monitorId != widget.output.monitorId || !mounted) {
+        return;
+      }
+      setState(() {
+        _level = _safeDisplayLevel(
+          update.level,
+          fallback: 1,
+          minimum: _minimumLevel,
+        );
+        _supported = update.supported;
+        _loading = false;
+      });
+    });
+    unawaited(_readInitialLevel());
+  }
+
+  Future<void> _readInitialLevel() async {
+    final monitorId = widget.output.monitorId;
+    final level = await _bridge.readSoftwareDimmingLevel(monitorId: monitorId);
+    if (!mounted || widget.output.monitorId != monitorId) {
+      return;
+    }
+    setState(() {
+      _loading = false;
+      _supported = level != null;
+      if (level != null) {
+        _level = _safeDisplayLevel(level, fallback: 1, minimum: _minimumLevel);
+      }
+    });
+  }
+
+  void _recordLevel(double value) {
+    setState(() {
+      _level = _safeDisplayLevel(
+        value,
+        fallback: _level,
+        minimum: _minimumLevel,
+      );
+    });
+  }
+
+  void _setLevel(double value) {
+    _recordLevel(value);
+    _commitTimer?.cancel();
+    _commitTimer = Timer(_commitInterval, _flushLevel);
+  }
+
+  void _commitLevel(double value) {
+    _recordLevel(value);
+    _commitTimer?.cancel();
+    _commitTimer = null;
+    _flushLevel();
+  }
+
+  void _flushLevel() {
+    _commitTimer?.cancel();
+    _commitTimer = null;
+    if (!_supported) {
+      return;
+    }
+    _bridge.setSoftwareDimming(
+      monitorId: widget.output.monitorId,
+      level: _level,
+    );
+  }
+
+  @override
+  void dispose() {
+    _commitTimer?.cancel();
+    unawaited(_subscription?.cancel());
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_supported) {
+      return const SizedBox.shrink();
+    }
+    final l10n = context.l10n;
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: SettingsSlider(
+        key: settingsSoftwareDimmingSliderKey(widget.output.monitorId),
+        label: l10n.outputSoftwareDimmingSemantics(widget.output.name),
+        value: _level,
+        minimum: _minimumLevel,
+        maximum: 1,
+        divisions: 75,
+        valueLabel: l10n.settingsPercent((_level * 100).round()),
+        enabled: !_loading,
+        onChanged: _setLevel,
+        onChangeEnd: _commitLevel,
+      ),
     );
   }
 }

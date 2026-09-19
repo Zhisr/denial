@@ -1001,6 +1001,16 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
+  String outputSoftwareDimmingSemantics(String outputName) {
+    return '$outputName 软件调光';
+  }
+
+  @override
+  String outputSoftwareDimmingUnavailable(String outputName) {
+    return '$outputName 软件调光（不可用）';
+  }
+
+  @override
   String get outputVolumeSemantics => '输出音量';
 
   @override
@@ -1689,7 +1699,52 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsColorPickerDone => '完成';
 
   @override
-  String get settingsColorPickerInstructions => '拖动以选择颜色。使用方向键进行微调。';
+  String get settingsColorPickerInstructions => '可直观选择，也可输入精确的颜色值。';
+
+  @override
+  String get settingsColorInputTitle => '颜色值';
+
+  @override
+  String get settingsColorInputRgb => 'RGB';
+
+  @override
+  String get settingsColorInputHsl => 'HSL';
+
+  @override
+  String get settingsColorInputHex => 'HEX';
+
+  @override
+  String get settingsColorInputRed => '红色';
+
+  @override
+  String get settingsColorInputGreen => '绿色';
+
+  @override
+  String get settingsColorInputBlue => '蓝色';
+
+  @override
+  String get settingsColorInputHue => '色相';
+
+  @override
+  String get settingsColorInputSaturation => '饱和度';
+
+  @override
+  String get settingsColorInputLightness => '亮度';
+
+  @override
+  String get settingsColorInputHexValue => '十六进制颜色';
+
+  @override
+  String get settingsColorInputNudgeHint => '使用 ↑↓ 微调 · 按住 Shift 调整 10';
+
+  @override
+  String get settingsColorInputRgbError => 'RGB 值须在 0 到 255 之间。';
+
+  @override
+  String get settingsColorInputHslError => 'H 须为 0–360，S/L 须为 0–100。';
+
+  @override
+  String get settingsColorInputHexError => '请输入 3 位或 6 位十六进制数。';
 
   @override
   String get settingsColorPickerReset => '重置';
@@ -2396,27 +2451,25 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsShortcutActionSwapDown => '向下交换窗口';
 
   @override
-  String get settingsShortcutActionPreviousWorkspace => 'Previous workspace';
+  String get settingsShortcutActionPreviousWorkspace => '上一个工作区';
 
   @override
-  String get settingsShortcutActionNextWorkspace => 'Next workspace';
+  String get settingsShortcutActionNextWorkspace => '下一个工作区';
 
   @override
-  String get settingsShortcutActionMoveToPreviousWorkspace =>
-      'Move window to previous workspace';
+  String get settingsShortcutActionMoveToPreviousWorkspace => '将窗口移至上一个工作区';
 
   @override
-  String get settingsShortcutActionMoveToNextWorkspace =>
-      'Move window to next workspace';
+  String get settingsShortcutActionMoveToNextWorkspace => '将窗口移至下一个工作区';
 
   @override
   String settingsShortcutActionSwitchWorkspace(int workspace) {
-    return 'Switch to workspace $workspace';
+    return '切换到工作区 $workspace';
   }
 
   @override
   String settingsShortcutActionMoveToWorkspace(int workspace) {
-    return 'Move window to workspace $workspace';
+    return '将窗口移至工作区 $workspace';
   }
 
   @override
@@ -2443,6 +2496,25 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get settingsWindowLayoutTitle => '窗口布局';
+
+  @override
+  String get settingsScrollingLayoutWheelTitle => 'Super + 鼠标滚轮';
+
+  @override
+  String get settingsScrollingLayoutWheelDescription =>
+      '按住 Super 并滚动鼠标滚轮来移动窗口带。';
+
+  @override
+  String get settingsScrollingLayoutWheelSpeed => '滚轮速度';
+
+  @override
+  String get settingsScrollingLayoutWheelUpDirection => '滚轮向上移动';
+
+  @override
+  String get settingsScrollingLayoutWheelUpLeft => '向左';
+
+  @override
+  String get settingsScrollingLayoutWheelUpRight => '向右';
 
   @override
   String get settingsWorkspacesTitle => 'Workspaces';
@@ -3282,6 +3354,14 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get wallpaperFinding => '正在查找壁纸…';
+
+  @override
+  String wallpaperFolderHint(String directory) {
+    return '将您自己的壁纸添加到 $directory。';
+  }
+
+  @override
+  String get wallpaperImageServerUnavailable => '在线壁纸不可用。本地壁纸仍可使用。';
 
   @override
   String get wallpaperMobileBackToSelection => '返回壁纸选择';

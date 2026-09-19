@@ -506,6 +506,7 @@ pub enum WindowContentKind {
     LayerShellBottom,
     LayerShellTop,
     LayerShellOverlay,
+    PopupSurface,
 }
 
 impl WindowContentKind {
@@ -536,6 +537,7 @@ impl WindowContentKind {
             Self::LayerShellBottom => fb::WindowContentKind::LayerShellBottom,
             Self::LayerShellTop => fb::WindowContentKind::LayerShellTop,
             Self::LayerShellOverlay => fb::WindowContentKind::LayerShellOverlay,
+            Self::PopupSurface => fb::WindowContentKind::PopupSurface,
         }
     }
 }

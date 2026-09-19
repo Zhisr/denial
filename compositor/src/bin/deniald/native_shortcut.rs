@@ -2016,6 +2016,15 @@ impl ShortcutEngine {
         }
     }
 
+    /// A compositor-consumed pointer-axis action while SUPER is held is also
+    /// a chord, so releasing SUPER must not invoke its modifier-tap action.
+    #[cfg(any(feature = "flutter", test))]
+    pub(super) fn note_pointer_axis(&mut self) {
+        if self.logo_keys != 0 {
+            self.logo_chorded = true;
+        }
+    }
+
     /// Whether either physical SUPER key is currently compositor-owned.
     #[cfg(any(feature = "flutter", test))]
     pub(super) fn super_pressed(&self) -> bool {
@@ -2344,5 +2353,20 @@ mod tests {
         );
         engine.pass_through_key(2);
         assert_eq!(engine.observe(2, false), ShortcutDisposition::Forward);
+    }
+
+    #[test]
+    fn super_pointer_axis_suppresses_the_modifier_tap_action() {
+        let mut engine = ShortcutEngine::from_file(&default_shortcut_file()).unwrap();
+
+        assert_eq!(
+            engine.observe(KEY_LEFT_META, true),
+            ShortcutDisposition::Consume
+        );
+        engine.note_pointer_axis();
+        assert_eq!(
+            engine.observe(KEY_LEFT_META, false),
+            ShortcutDisposition::Consume
+        );
     }
 }

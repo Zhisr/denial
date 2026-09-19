@@ -86,8 +86,9 @@ finishes, install Denial with the command for your distribution:
 | Fedora 44 | `sudo dnf install denial` |
 
 Alpine Linux 3.24 has [signed APK downloads](docs/INSTALL.md#alpine-linux-324).
-ARM64 builds are supported [from source](docs/BUILDING.md); NixOS and Void Linux
-have also been tested, with no first-party binaries yet.
+NixOS has a [first-party source flake and module](packaging/nixos/README.md).
+ARM64 builds are supported [from source](docs/BUILDING.md); Void Linux has also
+been tested, with no first-party binary yet.
 
 After installing, choose **Denial** from your display manager's session menu.
 

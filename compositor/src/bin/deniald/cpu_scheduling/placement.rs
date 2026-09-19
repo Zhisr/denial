@@ -233,7 +233,8 @@ mod tests {
             .set(Some(Groups::new(all, big, little).unwrap()))
             .unwrap();
         sched_setaffinity(None, &big).unwrap();
-        let mut command = Command::new("/bin/cat");
+        let mut command =
+            Command::new(std::env::var_os("DENIAL_TEST_CAT").unwrap_or_else(|| "cat".into()));
         command.arg("/proc/self/status");
         // SAFETY: exercise the same syscall-only callback used by app launch.
         unsafe {

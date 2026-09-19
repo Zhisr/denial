@@ -45,6 +45,7 @@ impl WaylandFrontend {
         #[cfg(feature = "flutter")]
         let idle_inhibitors = IdleInhibitors::new(&display_handle);
         let output_power = OutputPowerManager::new(&display_handle);
+        let gamma_control = gamma_control::GammaControlManager::new(&display_handle);
         let screencopy = screencopy::ScreencopyManager::new(&display_handle);
         let text_input = TextInputManager::new(&display_handle);
         let input_method = InputMethodManager::new(&display_handle);
@@ -448,6 +449,7 @@ impl WaylandFrontend {
             surfaces_by_id: HashMap::new(),
             next_surface_id: 1,
             window_geometry_intents: HashMap::new(),
+            layout_preview_sizes: HashMap::new(),
             restore_window_geometries: HashMap::new(),
             window_layout: create_window_layout(window_layout_kind),
             layout_restore_geometries: HashMap::new(),
@@ -562,6 +564,7 @@ impl WaylandFrontend {
             restored_window_positions: HashSet::new(),
             client_geometry_state_requests: HashSet::new(),
             pending_client_sized_placements: HashMap::new(),
+            placed_transient_parents: HashMap::new(),
             _output_manager_state: output_manager_state,
             seat_state,
             data_device_state,
@@ -587,6 +590,7 @@ impl WaylandFrontend {
             #[cfg(feature = "flutter")]
             idle_inhibition_cached: false,
             output_power,
+            gamma_control,
             screencopy,
             text_input,
             input_method,

@@ -16,6 +16,7 @@ Project-level release documents live at the repository root:
 - [Install Denial](INSTALL.md)
 - [Build Denial](BUILDING.md)
 - [Distribution support](DISTRIBUTION_SUPPORT.md)
+- [Known issues](KNOWN_ISSUES.md)
 - [Architecture](architecture.md)
 - [Session startup and locking](SESSION_STARTUP.md)
 - [denialctl](DENIALCTL.md)

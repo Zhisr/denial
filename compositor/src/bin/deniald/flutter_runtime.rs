@@ -127,6 +127,8 @@ const AUDIO_STREAMS_STATE_CHANNEL: &CStr = c"denial/audio_streams_state";
 const AUDIO_DEVICES_STATE_CHANNEL: &CStr = c"denial/audio_devices_state";
 const BRIGHTNESS_CHANNEL: &CStr = c"denial/brightness";
 const BRIGHTNESS_STATE_CHANNEL: &CStr = c"denial/brightness_state";
+const SOFTWARE_DIMMING_CHANNEL: &CStr = c"denial/software_dimming";
+const SOFTWARE_DIMMING_STATE_CHANNEL: &CStr = c"denial/software_dimming_state";
 const WINDOW_CLOSE_COMPLETE_CHANNEL: &CStr = c"denial/window_close_complete";
 const CURSOR_PRESENTED_CHANNEL: &CStr = c"denial/cursor_presented";
 const GLFW_MOD_CONTROL: u32 = 0x0002;
@@ -147,6 +149,7 @@ const MAX_LIVE_EXTERNAL_TEXTURE_RESOURCES: usize = 1024;
 const PLATFORM_TASK_MAX_DISPATCH_TIMEOUT: Duration = Duration::from_millis(100);
 const MAX_PENDING_AUDIO_REQUESTS: usize = 128;
 const MAX_PENDING_BRIGHTNESS_REQUESTS: usize = 128;
+const MAX_PENDING_SOFTWARE_DIMMING_REQUESTS: usize = 128;
 const MAX_PENDING_UI_DEVELOPMENT_COMMANDS: usize = 64;
 const WINDOW_CLOSE_LEASE_TIMEOUT: Duration = Duration::from_secs(5);
 const RENDER_AUDIT_INTERVAL: Duration = Duration::from_secs(1);
@@ -462,6 +465,7 @@ pub struct FlutterRuntime {
     authentication: Arc<super::authentication::AuthenticationController>,
     pending_audio_requests: VecDeque<super::system_controls::AudioRequest>,
     pending_brightness_requests: VecDeque<super::system_controls::BrightnessRequest>,
+    pending_software_dimming_requests: VecDeque<super::gamma_control::SoftwareDimmingRequest>,
     pending_ui_development_commands: VecDeque<super::ui_development::UiDevelopmentCommand>,
     pending_idle_policy: Option<idle_policy::IdlePolicyConfiguration>,
     pending_dpms_off: bool,

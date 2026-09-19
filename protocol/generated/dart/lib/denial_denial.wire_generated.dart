@@ -47,7 +47,8 @@ enum WindowContentKind {
   LayerShellBackground(2),
   LayerShellBottom(3),
   LayerShellTop(4),
-  LayerShellOverlay(5);
+  LayerShellOverlay(5),
+  PopupSurface(6);
 
   final int value;
   const WindowContentKind(this.value);
@@ -60,6 +61,7 @@ enum WindowContentKind {
       case 3: return WindowContentKind.LayerShellBottom;
       case 4: return WindowContentKind.LayerShellTop;
       case 5: return WindowContentKind.LayerShellOverlay;
+      case 6: return WindowContentKind.PopupSurface;
       default: throw StateError('Invalid value $value for bit flag enum');
     }
   }
@@ -68,7 +70,7 @@ enum WindowContentKind {
       value == null ? null : WindowContentKind.fromValue(value);
 
   static const int minValue = 0;
-  static const int maxValue = 5;
+  static const int maxValue = 6;
   static const fb.Reader<WindowContentKind> reader = _WindowContentKindReader();
 }
 

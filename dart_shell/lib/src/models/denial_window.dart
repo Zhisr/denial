@@ -8,6 +8,7 @@ enum DenialWindowContentKind {
   layerShellBottom,
   layerShellTop,
   layerShellOverlay,
+  popupSurface,
 }
 
 enum DenialSurfaceRole { root, subsurface, popup }
@@ -215,8 +216,12 @@ class DenialWindow {
     DenialWindowContentKind.layerShellTop ||
     DenialWindowContentKind.layerShellOverlay => true,
     DenialWindowContentKind.surfaceTree ||
-    DenialWindowContentKind.localFlutter => false,
+    DenialWindowContentKind.localFlutter ||
+    DenialWindowContentKind.popupSurface => false,
   };
+
+  bool get isPopupSurface =>
+      contentKind == DenialWindowContentKind.popupSurface;
 
   bool get isHome => appId == 'denia-home' || title == 'denia-home';
 
@@ -224,10 +229,12 @@ class DenialWindow {
       appId.startsWith('denia-systemui') || title.startsWith('denia-systemui');
 
   bool get isInputMethodPopup =>
-      appId == 'denia-systemui-input-method' ||
-      title == 'denia-systemui-input-method';
+      isPopupSurface &&
+      (appId == 'denia-systemui-input-method' ||
+          title == 'denia-systemui-input-method');
 
-  bool get isUserApp => !isLayerShell && !isHome && !isSystemUi;
+  bool get isUserApp =>
+      !isLayerShell && !isPopupSurface && !isHome && !isSystemUi;
 
   /// Whether this scene entry should play Denial's one-time window entrance.
   ///

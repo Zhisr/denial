@@ -30,6 +30,7 @@ use super::ui_development::{
     CommandKind as UiDevelopmentCommandKind, UiDevelopmentCommand, UiDevelopmentState,
 };
 use super::{
+    gamma_control::SoftwareDimmingRequest,
     native_shortcut::ShortcutBinding,
     settings::{KeyboardSettings, MouseSettings, TouchpadSettings},
     system_controls::{AudioRequest, BrightnessRequest},
@@ -559,6 +560,18 @@ pub(super) struct PendingSystemControl {
     reply: SystemControlReplySender,
 }
 
+#[derive(Debug)]
+pub(super) struct PendingSoftwareDimming {
+    pub(super) command: SoftwareDimmingRequest,
+    reply: SystemControlReplySender,
+}
+
+impl PendingSoftwareDimming {
+    pub(super) fn into_parts(self) -> (SoftwareDimmingRequest, SystemControlReplySender) {
+        (self.command, self.reply)
+    }
+}
+
 impl PendingSystemControl {
     pub(super) fn into_parts(self) -> (SystemControlCommand, SystemControlReplySender) {
         (self.command, self.reply)
@@ -601,6 +614,7 @@ pub(super) enum ControlEvent {
     Shell(PendingShellControl),
     Settings(PendingSettingsControl),
     SystemControl(PendingSystemControl),
+    SoftwareDimming(PendingSoftwareDimming),
     UiDevelopment(PendingUiDevelopment),
 }
 
@@ -728,6 +742,19 @@ struct BrightnessParams {
 struct BrightnessLevelParams {
     monitor_id: i64,
     connector: String,
+    percent: u8,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SoftwareDimmingParams {
+    monitor_id: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SoftwareDimmingLevelParams {
+    monitor_id: i64,
     percent: u8,
 }
 
@@ -1464,6 +1491,59 @@ fn handle_connection(
                 events,
             )
         }
+        "software_dimming.get" => {
+            let parameters =
+                match parse_settings_params::<SoftwareDimmingParams>(request.id, request.params) {
+                    Ok(parameters) if parameters.monitor_id > 0 => parameters,
+                    Ok(_) => {
+                        return write_response(
+                            &mut stream,
+                            &error_response(
+                                Some(request.id),
+                                "invalid_params",
+                                "software dimming requires a positive monitor ID",
+                            ),
+                        );
+                    }
+                    Err(response) => return write_response(&mut stream, &response),
+                };
+            queue_software_dimming(
+                request.id,
+                SoftwareDimmingRequest::Read {
+                    output: denial_core::topology::OutputId(parameters.monitor_id as u64),
+                },
+                events,
+            )
+        }
+        "software_dimming.set" => {
+            let parameters = match parse_settings_params::<SoftwareDimmingLevelParams>(
+                request.id,
+                request.params,
+            ) {
+                Ok(parameters) if parameters.monitor_id > 0 && parameters.percent <= 100 => {
+                    parameters
+                }
+                Ok(_) => {
+                    return write_response(
+                        &mut stream,
+                        &error_response(
+                            Some(request.id),
+                            "invalid_params",
+                            "software dimming requires percent 0-100 and a positive monitor ID",
+                        ),
+                    );
+                }
+                Err(response) => return write_response(&mut stream, &response),
+            };
+            queue_software_dimming(
+                request.id,
+                SoftwareDimmingRequest::Set {
+                    output: denial_core::topology::OutputId(parameters.monitor_id as u64),
+                    level: f64::from(parameters.percent) / 100.0,
+                },
+                events,
+            )
+        }
         "ui.get" => queue_ui_development(
             request.id,
             UiDevelopmentCommandKind::Query,
@@ -1680,6 +1760,39 @@ fn queue_system_control(
                 Some(id),
                 "unavailable",
                 "the compositor stopped before processing the system-control request",
+            ),
+        },
+    }
+}
+
+fn queue_software_dimming(
+    id: u64,
+    command: SoftwareDimmingRequest,
+    events: &SyncSender<ControlEvent>,
+) -> Value {
+    let (reply, result) = mpsc::sync_channel(1);
+    let pending = PendingSoftwareDimming { command, reply };
+    match events.try_send(ControlEvent::SoftwareDimming(pending)) {
+        Err(mpsc::TrySendError::Full(_)) => {
+            error_response(Some(id), "busy", "the compositor control queue is full")
+        }
+        Err(mpsc::TrySendError::Disconnected(_)) => error_response(
+            Some(id),
+            "unavailable",
+            "the compositor control queue is unavailable",
+        ),
+        Ok(()) => match result.recv_timeout(SYSTEM_CONTROL_TIMEOUT) {
+            Ok(Ok(state)) => success_response(id, state),
+            Ok(Err(error)) => error_response(Some(id), &error.code, error.message),
+            Err(mpsc::RecvTimeoutError::Timeout) => error_response(
+                Some(id),
+                "timeout",
+                "the compositor did not process the software-dimming request in time",
+            ),
+            Err(mpsc::RecvTimeoutError::Disconnected) => error_response(
+                Some(id),
+                "unavailable",
+                "the compositor stopped before processing the software-dimming request",
             ),
         },
     }

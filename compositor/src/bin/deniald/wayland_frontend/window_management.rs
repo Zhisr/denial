@@ -57,12 +57,10 @@ fn configured_window_size(
 // Must match DesktopMetrics.frameBorder in the embedded shell.
 pub(super) const SHELL_FRAME_BORDER: i32 = 1;
 
-#[cfg(feature = "flutter")]
 pub(super) fn shell_draws_server_frame(window: &Window) -> bool {
     ManagedWindow::new(window).is_some_and(|window| window.facts().server_side_decorated)
 }
 
-#[cfg(feature = "flutter")]
 pub(super) fn shell_content_geometry(
     mut frame: Rectangle<i32, Logical>,
     server_side_decorated: bool,
@@ -77,6 +75,14 @@ pub(super) fn shell_content_geometry(
         frame.size.h -= SHELL_FRAME_BORDER * 2;
     }
     frame
+}
+
+pub(super) fn maximized_shell_content_geometry(
+    frame: Rectangle<i32, Logical>,
+    server_side_decorated: bool,
+    managed_layout: bool,
+) -> Rectangle<i32, Logical> {
+    shell_content_geometry(frame, server_side_decorated && managed_layout)
 }
 
 /// Drop client-protocol fullscreen/maximize state before a shell-owned
@@ -1388,10 +1394,9 @@ fn close_window(window: &Window) -> bool {
 }
 
 #[cfg(feature = "flutter")]
-/// Atomically applies the shell-owned SUPER+Up geometry before notifying
-/// Flutter. The XDG/EWMH maximized state stays untouched, but Rust remains the
-/// placement authority throughout the transition instead of waiting for a
-/// later Flutter frame to return the requested coordinates.
+/// Applies SUPER+W maximize. Scrolling layouts toggle their authoritative
+/// column state directly, then publish the matching client state in the same
+/// arrangement pass. Fixed layouts retain the legacy shell-owned overlay path.
 pub(super) fn toggle_shell_maximize_focused_toplevel(state: &mut RuntimeState) -> bool {
     if let Some(window_id) = focused_local_window(state) {
         queue_local_window_action(state, window_id, WindowAction::ToggleMaximize);
@@ -1404,10 +1409,47 @@ pub(super) fn toggle_shell_maximize_focused_toplevel(state: &mut RuntimeState) -
         .map(|window| window.facts().client_state)
         .unwrap_or_default();
 
+    let scrolling_maximize = state
+        .wayland
+        .as_ref()
+        .expect("missing Wayland frontend")
+        .window_is_scrolling_layout_managed(&window);
+    if scrolling_maximize {
+        if client.fullscreen
+            || state
+                .wayland
+                .as_ref()
+                .expect("missing Wayland frontend")
+                .window_geometry_locked(&window)
+        {
+            return true;
+        }
+        let maximized = {
+            let frontend = state.wayland.as_mut().expect("missing Wayland frontend");
+            let maximized = !frontend.window_is_layout_maximized(&window);
+            if !frontend.set_layout_window_maximized(&window, maximized) {
+                return true;
+            }
+            frontend.arrange_layout_windows();
+            maximized
+        };
+        queue_window_action_for_window(
+            state,
+            &window,
+            if maximized {
+                WindowAction::Maximize
+            } else {
+                WindowAction::Restore
+            },
+        );
+        state.scene_sync.mark_dirty();
+        return true;
+    }
+
     let (target, action) = {
         let frontend = state.wayland.as_mut().expect("missing Wayland frontend");
         if client.fullscreen || frontend.window_geometry_locked(&window) {
-            // SUPER+Up is a no-op while true fullscreen is active.
+            // SUPER+W is a no-op while true fullscreen is active.
             return true;
         }
         let Some(root_surface) = frontend.window_root_surface(&window) else {
@@ -1438,7 +1480,11 @@ pub(super) fn toggle_shell_maximize_focused_toplevel(state: &mut RuntimeState) -
                 return false;
             };
             let frame = frontend.maximize_work_area(Some(&output), output_geometry);
-            let target = shell_content_geometry(frame, shell_draws_server_frame(&window));
+            let target = maximized_shell_content_geometry(
+                frame,
+                shell_draws_server_frame(&window),
+                frontend.window_layout_manages_geometry(),
+            );
             frontend
                 .shell_maximize_restore_geometries
                 .insert(surface_id, restore);
@@ -1742,14 +1788,30 @@ pub(super) fn apply_managed_client_state_request(
         return true;
     }
 
-    let entering_maximize = matches!(request, ManagedClientStateRequest::Maximize);
-    if entering_maximize
+    let scrolling_layout_maximize = matches!(
+        request,
+        ManagedClientStateRequest::Maximize | ManagedClientStateRequest::Unmaximize
+    ) && state
+        .wayland
+        .as_ref()
+        .expect("missing Wayland frontend")
+        .window_is_scrolling_layout_managed(window);
+    if scrolling_layout_maximize {
+        let maximized = matches!(request, ManagedClientStateRequest::Maximize);
+        state
+            .wayland
+            .as_mut()
+            .expect("missing Wayland frontend")
+            .set_layout_window_maximized(window, maximized);
+    } else if matches!(request, ManagedClientStateRequest::Maximize)
         && state
             .wayland
             .as_ref()
             .expect("missing Wayland frontend")
             .window_is_layout_managed(window)
     {
+        // Fixed managed layouts continue rejecting client maximize rather
+        // than letting a screen-sized overlay obscure their remaining tiles.
         state
             .wayland
             .as_mut()
@@ -1821,41 +1883,65 @@ pub(super) fn apply_managed_client_state_request(
         _ => None,
     };
     let (target, fullscreen_output) = if entering {
-        let frontend = state.wayland.as_ref().expect("missing Wayland frontend");
-        let requested_output = requested_output_resource
-            .and_then(Output::from_resource)
-            .filter(|candidate| {
-                frontend
-                    .outputs
-                    .iter()
-                    .any(|entry| entry.output == *candidate)
-            });
-        let fullscreen_output = requested_output
-            .as_ref()
-            .and_then(|_| requested_output_resource.cloned());
-        let output = requested_output
-            .or_else(|| {
-                frontend.managed_layout_space(window).and_then(|space| {
+        let (output, monitor, fullscreen_output) = {
+            let frontend = state.wayland.as_ref().expect("missing Wayland frontend");
+            let requested_output = requested_output_resource
+                .and_then(Output::from_resource)
+                .filter(|candidate| {
                     frontend
                         .outputs
                         .iter()
-                        .find(|entry| entry.id == space.output)
-                        .map(|entry| entry.output.clone())
+                        .any(|entry| entry.output == *candidate)
+                });
+            let fullscreen_output = requested_output
+                .as_ref()
+                .and_then(|_| requested_output_resource.cloned());
+            let output = requested_output
+                .or_else(|| {
+                    frontend.managed_layout_space(window).and_then(|space| {
+                        frontend
+                            .outputs
+                            .iter()
+                            .find(|entry| entry.id == space.output)
+                            .map(|entry| entry.output.clone())
+                    })
                 })
-            })
-            .or_else(|| {
-                frontend
-                    .output_for_geometry(current)
-                    .map(|entry| entry.output.clone())
-            });
-        let Some(output) = output else {
-            return false;
-        };
-        let Some(monitor) = frontend.space.output_geometry(&output) else {
-            return false;
+                .or_else(|| {
+                    frontend
+                        .output_for_geometry(current)
+                        .map(|entry| entry.output.clone())
+                });
+            let Some(output) = output else {
+                return false;
+            };
+            let Some(monitor) = frontend.space.output_geometry(&output) else {
+                return false;
+            };
+            (output, monitor, fullscreen_output)
         };
         let target = if request_kind == ClientStateRequestKind::Maximize {
-            frontend.maximize_work_area(Some(&output), monitor)
+            if scrolling_layout_maximize {
+                let layout_target = state
+                    .wayland
+                    .as_mut()
+                    .expect("missing Wayland frontend")
+                    .layout_target_for_window(window);
+                layout_target.unwrap_or_else(|| {
+                    let frontend = state.wayland.as_ref().expect("missing Wayland frontend");
+                    maximized_shell_content_geometry(
+                        frontend.maximize_work_area(Some(&output), monitor),
+                        shell_draws_server_frame(window),
+                        frontend.window_layout_manages_geometry(),
+                    )
+                })
+            } else {
+                let frontend = state.wayland.as_ref().expect("missing Wayland frontend");
+                maximized_shell_content_geometry(
+                    frontend.maximize_work_area(Some(&output), monitor),
+                    shell_draws_server_frame(window),
+                    frontend.window_layout_manages_geometry(),
+                )
+            }
         } else {
             monitor
         };
@@ -1945,6 +2031,13 @@ pub(super) fn apply_managed_client_state_request(
             frontend.defer_client_sized_window_placement(window);
             frontend.clear_window_geometry_intent(window);
         }
+    }
+    if scrolling_layout_maximize {
+        state
+            .wayland
+            .as_mut()
+            .expect("missing Wayland frontend")
+            .arrange_layout_windows();
     }
     #[cfg(feature = "flutter")]
     {
@@ -2037,7 +2130,10 @@ pub(super) fn apply_managed_minimize(
 mod tests {
     use smithay::utils::{Logical, Point, Rectangle, Size};
 
-    use super::{authoritative_geometry_rejects_configure, configured_window_size};
+    use super::{
+        authoritative_geometry_rejects_configure, configured_window_size,
+        maximized_shell_content_geometry,
+    };
 
     fn rect(x: i32, y: i32, width: i32, height: i32) -> Rectangle<i32, Logical> {
         Rectangle::new(Point::from((x, y)), Size::from((width, height)))
@@ -2085,5 +2181,17 @@ mod tests {
             configured_window_size(tile, client_fixed, client_fixed, true),
             tile,
         );
+    }
+
+    #[test]
+    fn managed_layout_maximize_reserves_the_shell_frame() {
+        let frame = rect(8, 40, 1904, 1032);
+
+        assert_eq!(
+            maximized_shell_content_geometry(frame, true, true),
+            rect(9, 41, 1902, 1030),
+        );
+        assert_eq!(maximized_shell_content_geometry(frame, true, false), frame,);
+        assert_eq!(maximized_shell_content_geometry(frame, false, true), frame,);
     }
 }

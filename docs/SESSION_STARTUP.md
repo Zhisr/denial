@@ -19,7 +19,9 @@ every initial output has accepted a real atomic commit, Denial also publishes
 the environment to an available systemd user manager and starts its packaged
 `denial-session.target`. That target binds to the standard
 `graphical-session.target`, allowing portals and other desktop services to
-start against the discovered sockets. It also starts systemd's
+start against the discovered sockets. It pulls in and waits for
+`graphical-session-pre.target` before the graphical session starts, then
+starts systemd's
 `xdg-desktop-autostart.target`, so the user manager launches the effective
 desktop entries from `$XDG_CONFIG_HOME/autostart` and the `autostart` child of
 every directory in `$XDG_CONFIG_DIRS` only after Denial is ready. Entries can
@@ -80,6 +82,13 @@ the `applicationEnvironment` object inside its Rust-owned
 }
 ```
 
+The document may also be edited directly while Denial is running. Denial
+watches the containing directory, validates the complete saved document, and
+applies valid changes live. `version` and `revision` are Denial-owned metadata;
+an editor does not need to increment `revision`. Invalid edits are left intact
+for correction and do not replace the running last known-good settings.
+Deleting the file restores and recreates the defaults.
+
 The `default` map applies to every process launched by Denial. Each entry in
 `applications` is a delta keyed by the standard freedesktop desktop-file ID;
 it applies after the default map when that desktop entry is launched from the
@@ -104,6 +113,25 @@ not published to systemd or D-Bus activation. Consequently, they do not affect
 applications launched through `xdg-desktop-autostart.target`. Put variables in
 the login environment instead when every process in the graphical session must
 inherit them.
+
+Before launching an application, Denial checks Xwayland's `XIM_SERVERS`
+registrations when neither the inherited environment nor the applicable
+application-environment rules select `XMODIFIERS`. If exactly one registered
+XIM server still owns its advertised selection, Denial derives the standard
+`@im=...` modifier for that launch. Stale, missing, or ambiguous registrations
+are ignored. This makes an already-running Fcitx, IBus, or other conforming XIM
+server available to Denial-launched Xwayland applications without requiring a
+manual environment override.
+
+GTK input-method selection is scoped to the display backend instead of being
+forced into every child process through `GTK_IM_MODULE`. Native Wayland GTK
+applications leave that variable unset and automatically select GTK's Wayland
+text-input path. Denial publishes `Gtk/IMModule=xim` through the XSettings
+manager owned by Xwayland, so GTK applications using X11 select the standard
+XIM bridge without a per-application override. An inherited or configured
+`GTK_IM_MODULE` still takes precedence over XSettings. Discovery of the active
+XIM server and launch-time `XMODIFIERS` selection remain conditional as
+described above.
 
 ## Qt application theming
 

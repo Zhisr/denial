@@ -1853,6 +1853,18 @@ abstract class AppLocalizations {
   /// **'{outputName} brightness'**
   String outputBrightnessSemantics(String outputName);
 
+  /// Accessible label for an output gamma-LUT dimming slider.
+  ///
+  /// In en, this message translates to:
+  /// **'{outputName} software dimming'**
+  String outputSoftwareDimmingSemantics(String outputName);
+
+  /// Label for an output that has no usable DRM gamma LUT.
+  ///
+  /// In en, this message translates to:
+  /// **'{outputName} software dimming (unavailable)'**
+  String outputSoftwareDimmingUnavailable(String outputName);
+
   /// English UI text for outputVolumeSemantics.
   ///
   /// In en, this message translates to:
@@ -3149,11 +3161,101 @@ abstract class AppLocalizations {
   /// **'Done'**
   String get settingsColorPickerDone;
 
-  /// Pointer and keyboard instructions displayed below the color wheel.
+  /// Instructions displayed between the color wheel and exact color-value editor.
   ///
   /// In en, this message translates to:
-  /// **'Drag to choose a color. Use the arrow keys for fine adjustments.'**
+  /// **'Choose visually or enter exact color values.'**
   String get settingsColorPickerInstructions;
+
+  /// Heading for exact color-value input controls.
+  ///
+  /// In en, this message translates to:
+  /// **'Color values'**
+  String get settingsColorInputTitle;
+
+  /// Label for RGB color-value input mode.
+  ///
+  /// In en, this message translates to:
+  /// **'RGB'**
+  String get settingsColorInputRgb;
+
+  /// Label for HSL color-value input mode.
+  ///
+  /// In en, this message translates to:
+  /// **'HSL'**
+  String get settingsColorInputHsl;
+
+  /// Label for hexadecimal color-value input mode.
+  ///
+  /// In en, this message translates to:
+  /// **'HEX'**
+  String get settingsColorInputHex;
+
+  /// Label for the red RGB channel input.
+  ///
+  /// In en, this message translates to:
+  /// **'Red'**
+  String get settingsColorInputRed;
+
+  /// Label for the green RGB channel input.
+  ///
+  /// In en, this message translates to:
+  /// **'Green'**
+  String get settingsColorInputGreen;
+
+  /// Label for the blue RGB channel input.
+  ///
+  /// In en, this message translates to:
+  /// **'Blue'**
+  String get settingsColorInputBlue;
+
+  /// Label for the HSL hue input.
+  ///
+  /// In en, this message translates to:
+  /// **'Hue'**
+  String get settingsColorInputHue;
+
+  /// Label for the HSL saturation input.
+  ///
+  /// In en, this message translates to:
+  /// **'Saturation'**
+  String get settingsColorInputSaturation;
+
+  /// Label for the HSL lightness input.
+  ///
+  /// In en, this message translates to:
+  /// **'Lightness'**
+  String get settingsColorInputLightness;
+
+  /// Label for the exact hexadecimal color input.
+  ///
+  /// In en, this message translates to:
+  /// **'Hex color'**
+  String get settingsColorInputHexValue;
+
+  /// Keyboard hint below exact color channel inputs.
+  ///
+  /// In en, this message translates to:
+  /// **'Use ↑↓ to nudge · Hold Shift for 10'**
+  String get settingsColorInputNudgeHint;
+
+  /// Validation error for out-of-range RGB color values.
+  ///
+  /// In en, this message translates to:
+  /// **'Use RGB values from 0 to 255.'**
+  String get settingsColorInputRgbError;
+
+  /// Validation error for out-of-range HSL color values.
+  ///
+  /// In en, this message translates to:
+  /// **'Use H 0–360 and S/L 0–100.'**
+  String get settingsColorInputHslError;
+
+  /// Validation error for an invalid hexadecimal color value.
+  ///
+  /// In en, this message translates to:
+  /// **'Use 3 or 6 hex digits.'**
+  String get settingsColorInputHexError;
 
   /// Button label that restores the default border color.
   ///
@@ -4563,6 +4665,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Window layout'**
   String get settingsWindowLayoutTitle;
+
+  /// Heading for mouse-wheel navigation in the scrolling window layout.
+  ///
+  /// In en, this message translates to:
+  /// **'Super + mouse wheel'**
+  String get settingsScrollingLayoutWheelTitle;
+
+  /// Explains the scrolling-layout mouse-wheel shortcut.
+  ///
+  /// In en, this message translates to:
+  /// **'Hold Super and turn the mouse wheel to scroll the window strip.'**
+  String get settingsScrollingLayoutWheelDescription;
+
+  /// Label for the scrolling-layout mouse-wheel speed slider.
+  ///
+  /// In en, this message translates to:
+  /// **'Wheel speed'**
+  String get settingsScrollingLayoutWheelSpeed;
+
+  /// Label for choosing the scrolling-layout direction of a wheel-up gesture.
+  ///
+  /// In en, this message translates to:
+  /// **'Wheel up moves'**
+  String get settingsScrollingLayoutWheelUpDirection;
+
+  /// Choice that maps mouse-wheel up to leftward scrolling-layout travel.
+  ///
+  /// In en, this message translates to:
+  /// **'Left'**
+  String get settingsScrollingLayoutWheelUpLeft;
+
+  /// Choice that maps mouse-wheel up to rightward scrolling-layout travel.
+  ///
+  /// In en, this message translates to:
+  /// **'Right'**
+  String get settingsScrollingLayoutWheelUpRight;
 
   /// Heading for monitor-local workspace settings.
   ///
@@ -6111,6 +6249,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Finding wallpapers…'**
   String get wallpaperFinding;
+
+  /// Hint identifying the folder scanned for manually added wallpapers.
+  ///
+  /// In en, this message translates to:
+  /// **'Add your own wallpapers to {directory}.'**
+  String wallpaperFolderHint(String directory);
+
+  /// Warning shown when the remote wallpaper image server cannot be reached.
+  ///
+  /// In en, this message translates to:
+  /// **'Online wallpapers are unavailable. Local wallpapers still work.'**
+  String get wallpaperImageServerUnavailable;
 
   /// Accessibility label for leaving mobile wallpaper positioning.
   ///
