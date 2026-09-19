@@ -1190,35 +1190,6 @@ abstract class AppLocalizations {
   /// **'Volume for {applicationName}'**
   String desktopVolumeForApplication(String applicationName);
 
-  /// English UI text for frameAppRendering.
-  ///
-  /// In en, this message translates to:
-  /// **'APP · {title} · RENDER'**
-  String frameAppRendering(String title);
-
-  /// English UI text for frameAppWaiting.
-  ///
-  /// In en, this message translates to:
-  /// **'APP · {title} · WAIT'**
-  String frameAppWaiting(String title);
-
-  /// English UI text for frameImportedStats.
-  ///
-  /// In en, this message translates to:
-  /// **'AVG {average}  MAX {maximum}  OVER {overBudget}  N {samples}'**
-  String frameImportedStats(
-    String average,
-    String maximum,
-    int overBudget,
-    int samples,
-  );
-
-  /// English UI text for frameImportedStatsUnavailable.
-  ///
-  /// In en, this message translates to:
-  /// **'AVG --.-  MAX --.-  OVER -  N -'**
-  String get frameImportedStatsUnavailable;
-
   /// English UI text for frameMilliseconds.
   ///
   /// In en, this message translates to:

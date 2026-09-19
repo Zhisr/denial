@@ -623,29 +623,6 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String frameAppRendering(String title) {
-    return '应用 · $title · 渲染';
-  }
-
-  @override
-  String frameAppWaiting(String title) {
-    return '应用 · $title · 等待';
-  }
-
-  @override
-  String frameImportedStats(
-    String average,
-    String maximum,
-    int overBudget,
-    int samples,
-  ) {
-    return '平均 $average  最大 $maximum  超预算 $overBudget  样本 $samples';
-  }
-
-  @override
-  String get frameImportedStatsUnavailable => '平均 --.-  最大 --.-  超预算 -  样本 -';
-
-  @override
   String frameMilliseconds(String value) {
     return '约 $value 毫秒';
   }

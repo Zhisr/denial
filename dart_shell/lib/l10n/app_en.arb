@@ -925,46 +925,6 @@
       }
     }
   },
-  "frameAppRendering": "APP · {title} · RENDER",
-  "@frameAppRendering": {
-    "description": "English UI text for frameAppRendering.",
-    "placeholders": {
-      "title": {
-        "type": "String"
-      }
-    }
-  },
-  "frameAppWaiting": "APP · {title} · WAIT",
-  "@frameAppWaiting": {
-    "description": "English UI text for frameAppWaiting.",
-    "placeholders": {
-      "title": {
-        "type": "String"
-      }
-    }
-  },
-  "frameImportedStats": "AVG {average}  MAX {maximum}  OVER {overBudget}  N {samples}",
-  "@frameImportedStats": {
-    "description": "English UI text for frameImportedStats.",
-    "placeholders": {
-      "average": {
-        "type": "String"
-      },
-      "maximum": {
-        "type": "String"
-      },
-      "overBudget": {
-        "type": "int"
-      },
-      "samples": {
-        "type": "int"
-      }
-    }
-  },
-  "frameImportedStatsUnavailable": "AVG --.-  MAX --.-  OVER -  N -",
-  "@frameImportedStatsUnavailable": {
-    "description": "English UI text for frameImportedStatsUnavailable."
-  },
   "frameMilliseconds": "~{value} ms",
   "@frameMilliseconds": {
     "description": "English UI text for frameMilliseconds.",

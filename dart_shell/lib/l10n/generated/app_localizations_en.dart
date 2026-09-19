@@ -648,29 +648,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String frameAppRendering(String title) {
-    return 'APP · $title · RENDER';
-  }
-
-  @override
-  String frameAppWaiting(String title) {
-    return 'APP · $title · WAIT';
-  }
-
-  @override
-  String frameImportedStats(
-    String average,
-    String maximum,
-    int overBudget,
-    int samples,
-  ) {
-    return 'AVG $average  MAX $maximum  OVER $overBudget  N $samples';
-  }
-
-  @override
-  String get frameImportedStatsUnavailable => 'AVG --.-  MAX --.-  OVER -  N -';
-
-  @override
   String frameMilliseconds(String value) {
     return '~$value ms';
   }
