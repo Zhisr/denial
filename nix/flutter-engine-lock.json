@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "source_lock_sha256": "ceead0e362ac6b786d159244ce00a676c7d656e195b4c34ab440aa03d430062e",
+  "source_lock_sha256": "7d5c1cd7c3b4811bf39f5f78938e7085d128bc4493d5be4c5d323325845979b0",
   "flutter": {
-    "revision": "c8894357b3a91902c358e8ad5cf0ebc85d45e83e",
-    "hash": "sha256-pXqNILNpgg6cj536+pEAVJIq1O1pPWRY6LV4HTK8zBs="
+    "revision": "d0817320163b3fb5a284e63cc21f2d6b9138442b",
+    "hash": "sha256-k7tdgQM221bMSFeYp4IZIIZUlzfvAaWgQ/hGkewoOXU="
   },
   "skia": {
     "revision": "0ee042f542b3e79f5ac49115387718c6bb3d7d34"
@@ -14,7 +14,7 @@
   },
   "engine": {
     "revision": "69c8c61792f04cc809dfef0c910414fb9afc06cd",
-    "source_hash": "sha256-O1hzpHdTjPlpG3vvz2I8F91aZdj4EpasZ0NjwEGN4Tc="
+    "source_hash": "sha256-kDaDwXX8pjpZEDRlj7GP8Ii/8a85RXWYXbbzGIkW9Js="
   },
   "dart": {
     "version": "3.12.2",
