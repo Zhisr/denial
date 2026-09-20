@@ -110,7 +110,9 @@ provisions an exact, detached Flutter/Skia projection; it never inherits an
 editable source checkout. Exact artifact hits are checksum-verified no-ops,
 while compatible build outputs and locked projections may still be reused.
 The Cachix write token is a repository Actions secret available only inside
-the disposable job.
+the disposable job. The workflow realizes its Cachix CLI from the flake's
+locked Nixpkgs input and passes that exact executable to the pinned action; it
+does not depend on the action's mutable remote installer expression.
 
 Test the downloadable development artifact when a change warrants a live
 session check. Do not repair a failed `main` production build directly on

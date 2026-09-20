@@ -149,7 +149,9 @@ The installer also adds a root-owned Nix configuration fragment containing
 only Denial's public Cachix URL and signing key. The unprivileged runner can
 ask the Nix daemon to realize immutable store paths, but it cannot change the
 daemon configuration or install a post-build hook. CI uploads only the
-explicit Denial outputs recorded by the Nix build.
+explicit Denial outputs recorded by the Nix build. The Cachix CLI itself is
+realized from the flake's locked Nixpkgs input and supplied directly to the
+pinned action, avoiding its remote installer expression.
 
 Audit the machine as the unprivileged runner account:
 

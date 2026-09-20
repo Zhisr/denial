@@ -63,6 +63,7 @@
         {
           default = pkgs.denial;
           denial = pkgs.denial;
+          denial-cachix-cli = pkgs.cachix;
           denial-nix-maintenance-tools = pkgs.buildEnv {
             name = "denial-nix-maintenance-tools";
             paths = [

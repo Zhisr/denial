@@ -510,11 +510,30 @@ jobs:
           retention-days: ${{ github.ref == 'refs/heads/main' && 90 || 7 }}
           compression-level: 0
 
+      - name: Resolve pinned Cachix CLI
+        id: cachix_cli
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t cachix_paths < <(
+            nix build \
+              .#denial-cachix-cli \
+              --accept-flake-config \
+              --no-link \
+              --print-out-paths
+          )
+          ((${#cachix_paths[@]} == 1))
+          cachix_bin="${cachix_paths[0]}/bin/cachix"
+          [[ "$cachix_bin" == /nix/store/*/bin/cachix ]]
+          test -x "$cachix_bin"
+          printf 'bin=%s\n' "$cachix_bin" >>"$GITHUB_OUTPUT"
+
       - name: Publish Nix closures to Cachix
         uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
         with:
           name: ${{ steps.nix_cache_build.outputs.cache_name }}
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          cachixBin: ${{ steps.cachix_cli.outputs.bin }}
           pathsToPush: ${{ steps.nix_cache_build.outputs.paths }}
           skipAddingSubstituter: true
 
