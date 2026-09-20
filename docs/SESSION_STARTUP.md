@@ -114,6 +114,28 @@ applications launched through `xdg-desktop-autostart.target`. Put variables in
 the login environment instead when every process in the graphical session must
 inherit them.
 
+## Clipboard display boundary
+
+Denial authorizes clipboard reads according to the display backend that owns
+keyboard focus. When a native Wayland surface is focused, every X11 request for
+the Wayland-owned clipboard is rejected, including requests from a hidden Xlib
+client in the same process tree. Native Wayland applications must read through
+the Wayland data-device protocol instead of using Xwayland as a side channel.
+
+Hybrid applications must therefore select their native Wayland window and
+clipboard backend. For example, launch Linux QQ with
+`--ozone-platform=wayland`; merely running inside a Wayland session does not
+prevent QQ from selecting Xwayland for its windows. Any hidden Xlib clipboard
+reader still receives an ordinary failed X11 selection response and is not
+treated as part of the focused Wayland client.
+
+When an Xwayland window owns keyboard focus, Denial instead permits clipboard
+reads from that shared Xwayland server. X11 clients within the server form one
+legacy trust domain because upstream Smithay does not identify the requesting
+client in its selection policy callback. X11 clients that own a selection
+remain able to export it to Wayland; the focus policy controls reads from a
+clipboard that Denial has published into Xwayland.
+
 Before launching an application, Denial checks Xwayland's `XIM_SERVERS`
 registrations when neither the inherited environment nor the applicable
 application-environment rules select `XMODIFIERS`. If exactly one registered
