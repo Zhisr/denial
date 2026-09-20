@@ -3536,7 +3536,7 @@ abstract class AppLocalizations {
   /// Label for a monitor rotated by 90 degrees.
   ///
   /// In en, this message translates to:
-  /// **'90° clockwise'**
+  /// **'90° counterclockwise'**
   String get settingsDisplayRotation90;
 
   /// Label for a monitor rotated by 180 degrees.
@@ -3548,7 +3548,7 @@ abstract class AppLocalizations {
   /// Label for a monitor rotated by 270 degrees.
   ///
   /// In en, this message translates to:
-  /// **'90° counterclockwise'**
+  /// **'90° clockwise'**
   String get settingsDisplayRotation270;
 
   /// Label for the monitor scale selector.

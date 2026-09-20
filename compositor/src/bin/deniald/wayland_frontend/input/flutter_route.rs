@@ -1006,8 +1006,28 @@ pub(super) fn activate_client_route(
     serial: Serial,
 ) -> bool {
     let Some(target_window) = route.window.as_ref() else {
+        if let Some(layer_root) = route.layer_root.as_ref() {
+            let keyboard_focus = state
+                .wayland
+                .as_ref()
+                .expect("missing Wayland frontend")
+                .layer_keyboard_focus_for_surface(layer_root);
+            if let Some(keyboard_focus) = keyboard_focus {
+                let keyboard = state
+                    .wayland
+                    .as_ref()
+                    .expect("missing Wayland frontend")
+                    .seat
+                    .get_keyboard()
+                    .expect("seat has no keyboard");
+                if keyboard.current_focus().as_ref() != Some(&keyboard_focus) {
+                    request_keyboard_focus(state, &keyboard, Some(keyboard_focus), serial);
+                }
+            }
+        }
         // Input-method candidate surfaces receive pointer/touch input without
-        // stealing the keyboard focus from the editor they serve.
+        // stealing the keyboard focus from the editor they serve. Layer-shell
+        // surfaces use their committed keyboard-interactivity mode above.
         return false;
     };
     let keyboard = state
@@ -1341,6 +1361,8 @@ pub(super) fn process_wayland_keyboard_transition(
     key_state: KeyState,
     time: u32,
 ) {
+    #[cfg(not(feature = "flutter"))]
+    focus_exclusive_layer_for_keyboard_event(state);
     let keyboard = state
         .wayland
         .as_ref()

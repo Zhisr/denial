@@ -2730,7 +2730,7 @@
   "@settingsDisplayRotationNormal": {
     "description": "Label for an unrotated monitor."
   },
-  "settingsDisplayRotation90": "90° clockwise",
+  "settingsDisplayRotation90": "90° counterclockwise",
   "@settingsDisplayRotation90": {
     "description": "Label for a monitor rotated by 90 degrees."
   },
@@ -2738,7 +2738,7 @@
   "@settingsDisplayRotation180": {
     "description": "Label for a monitor rotated by 180 degrees."
   },
-  "settingsDisplayRotation270": "90° counterclockwise",
+  "settingsDisplayRotation270": "90° clockwise",
   "@settingsDisplayRotation270": {
     "description": "Label for a monitor rotated by 270 degrees."
   },

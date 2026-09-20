@@ -57,8 +57,8 @@ use smithay::utils::{
 use smithay::wayland::buffer::BufferHandler;
 use smithay::wayland::compositor::{
     Blocker, BlockerState, BufferAssignment, CompositorClientState, CompositorHandler,
-    CompositorState, SurfaceAttributes, add_blocker, add_pre_commit_hook, get_parent,
-    is_sync_subsurface, with_states,
+    CompositorState, SurfaceAttributes, add_blocker, add_post_commit_hook, add_pre_commit_hook,
+    get_parent, is_sync_subsurface, with_states,
 };
 #[cfg(feature = "flutter")]
 use smithay::wayland::compositor::Cacheable;
@@ -85,14 +85,21 @@ use smithay::wayland::selection::SelectionHandler;
 use smithay::wayland::selection::data_device::{
     DataDeviceHandler, DataDeviceState, WaylandDndGrabHandler, set_data_device_focus,
 };
+use smithay::wayland::selection::ext_data_control::{
+    DataControlHandler as ExtDataControlHandler, DataControlState as ExtDataControlState,
+};
+use smithay::wayland::selection::wlr_data_control::{
+    DataControlHandler as WlrDataControlHandler, DataControlState as WlrDataControlState,
+};
 use smithay::wayland::shell::xdg::{
     PopupSurface, PositionerState, SurfaceCachedState, ToplevelSurface, XdgShellHandler,
     XdgShellState, XdgToplevelSurfaceData,
 };
 use smithay::wayland::shell::xdg::decoration::{XdgDecorationHandler, XdgDecorationState};
 use smithay::wayland::shell::wlr_layer::{
-    Layer as WlrLayer, LayerSurface as WlrLayerSurface, LayerSurfaceData, WlrLayerShellHandler,
-    WlrLayerShellState,
+    KeyboardInteractivity, LAYER_SURFACE_ROLE, Layer as WlrLayer,
+    LayerSurface as WlrLayerSurface, LayerSurfaceCachedState, LayerSurfaceData,
+    WlrLayerShellHandler, WlrLayerShellState,
 };
 use smithay::wayland::shm::{ShmHandler, ShmState};
 use smithay::wayland::socket::ListeningSocketSource;
@@ -563,8 +570,11 @@ pub(super) struct WaylandFrontend {
     pub _output_manager_state: OutputManagerState,
     pub seat_state: SeatState<RuntimeState>,
     pub data_device_state: DataDeviceState,
+    ext_data_control_state: ExtDataControlState,
+    wlr_data_control_state: WlrDataControlState,
     pub popups: PopupManager,
     pub seat: Seat<RuntimeState>,
+    session: LibSeatSession,
     layer_shell_state: WlrLayerShellState,
     libinput: smithay::reexports::input::Libinput,
     pub(super) settings: SettingsManager,
@@ -660,6 +670,41 @@ fn initial_xdg_placement_policy(
 struct PendingClientSizedPlacement {
     requested_location: Point<i32, Logical>,
     output_id: OutputId,
+}
+
+#[derive(Clone, Copy)]
+struct PendingAuxiliaryToplevelPlacement {
+    pointer_location: Point<i32, Logical>,
+    output_id: OutputId,
+}
+
+const fn should_place_auxiliary_toplevel_at_pointer(
+    has_parent: bool,
+    has_same_app_sibling: bool,
+    layout_managed: bool,
+) -> bool {
+    !has_parent && has_same_app_sibling && !layout_managed
+}
+
+#[cfg(test)]
+mod initial_toplevel_placement_tests {
+    use super::*;
+
+    #[test]
+    fn only_unparented_floating_siblings_follow_the_pointer() {
+        assert!(should_place_auxiliary_toplevel_at_pointer(
+            false, true, false
+        ));
+        assert!(!should_place_auxiliary_toplevel_at_pointer(
+            true, true, false
+        ));
+        assert!(!should_place_auxiliary_toplevel_at_pointer(
+            false, false, false
+        ));
+        assert!(!should_place_auxiliary_toplevel_at_pointer(
+            false, true, true
+        ));
+    }
 }
 
 /// The single compositor-side geometry contract for a managed window.
@@ -1010,7 +1055,10 @@ fn init_listener(
                 );
                 return;
             };
-            client_state.peer_uid = socket_peer_uid(&client_stream);
+            if let Some(credentials) = socket_peer_credentials(&client_stream) {
+                client_state.peer_pid = Some(credentials.pid);
+                client_state.peer_uid = Some(credentials.uid);
+            }
             if let Err(error) = frontend
                 .display_handle
                 .insert_client(client_stream, Arc::new(client_state))
@@ -1055,7 +1103,7 @@ smithay::delegate_dispatch2!(RuntimeState);
 
 // Cache peer identity before inserting the socket. Global visibility callbacks
 // run under the Wayland backend lock and must never re-enter it for credentials.
-fn socket_peer_uid(stream: &std::os::unix::net::UnixStream) -> Option<u32> {
+fn socket_peer_credentials(stream: &std::os::unix::net::UnixStream) -> Option<libc::ucred> {
     use std::os::fd::AsRawFd;
     let mut credentials = std::mem::MaybeUninit::<libc::ucred>::uninit();
     let mut size = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
@@ -1073,7 +1121,7 @@ fn socket_peer_uid(stream: &std::os::unix::net::UnixStream) -> Option<u32> {
         return None;
     }
     // SAFETY: the successful call initialized the complete structure.
-    Some(unsafe { credentials.assume_init() }.uid)
+    Some(unsafe { credentials.assume_init() })
 }
 
 #[cfg(feature = "flutter")]

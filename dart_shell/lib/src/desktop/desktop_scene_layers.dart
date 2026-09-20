@@ -22,10 +22,10 @@ class _DesktopLayerShellSurface extends StatelessWidget {
     );
     return Positioned.fromRect(
       rect: geometry,
-      // InputLayout currently has binary ownership: either Flutter owns a
-      // region or one Wayland client does. Keep desktop-wide layer surfaces
-      // transparent until it can express lower-priority client regions; this
-      // preserves shell widgets and desktop gestures above a wallpaper.
+      // Flutter paints the client texture, while DesktopInputLayoutPublisher
+      // transfers pointer and touch ownership to the native Wayland route.
+      // Keeping this widget transparent avoids duplicating that lifecycle in
+      // Flutter's gesture arena.
       child: IgnorePointer(
         child: RepaintBoundary(
           child: WindowSurfaceTree(

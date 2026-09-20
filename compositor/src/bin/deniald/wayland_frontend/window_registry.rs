@@ -33,6 +33,7 @@ pub(super) struct WindowRecord {
     pub(super) restored_position: bool,
     pub(super) client_geometry_state_requested: bool,
     pub(super) pending_client_sized_placement: Option<PendingClientSizedPlacement>,
+    pub(super) pending_auxiliary_toplevel_placement: Option<PendingAuxiliaryToplevelPlacement>,
     pub(super) placed_transient_parent: Option<ObjectId>,
     pub(super) placed_transient_parent_geometry: Option<Rectangle<i32, Logical>>,
     #[cfg(feature = "flutter")]

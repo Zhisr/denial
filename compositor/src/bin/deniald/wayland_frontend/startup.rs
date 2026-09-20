@@ -63,6 +63,14 @@ impl WaylandFrontend {
         let output_manager_state =
             OutputManagerState::new_with_xdg_output::<RuntimeState>(&display_handle);
         let data_device_state = DataDeviceState::new::<RuntimeState>(&display_handle);
+        // Clipboard owners such as wl-copy must be able to publish without
+        // manufacturing a focused helper surface just to obtain an input
+        // serial. Advertise both the standardized protocol and its widely
+        // deployed wlroots predecessor so current and older tools work.
+        let ext_data_control_state =
+            ExtDataControlState::new::<RuntimeState, _>(&display_handle, None, |_| true);
+        let wlr_data_control_state =
+            WlrDataControlState::new::<RuntimeState, _>(&display_handle, None, |_| true);
         let mut seat_state = SeatState::new();
         let mut seat = seat_state.new_wl_seat(&display_handle, "seat0");
         let window_layout_kind = settings.window_layout_kind();
@@ -263,7 +271,7 @@ impl WaylandFrontend {
                 "loaded saved window placements"
             );
         }
-        let libinput = init_libinput(event_loop, session, seat_name)?;
+        let libinput = init_libinput(event_loop, session.clone(), seat_name)?;
         Ok(Self {
             start_time: Instant::now(),
             socket_name,
@@ -435,8 +443,11 @@ impl WaylandFrontend {
             _output_manager_state: output_manager_state,
             seat_state,
             data_device_state,
+            ext_data_control_state,
+            wlr_data_control_state,
             popups,
             seat,
+            session,
             layer_shell_state,
             libinput,
             settings,

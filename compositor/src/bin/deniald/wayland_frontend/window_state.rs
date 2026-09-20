@@ -480,6 +480,32 @@ impl WaylandFrontend {
             .map(|entry| entry.logical_geometry)
     }
 
+    /// Remembers where an XDG toplevel was created until its role metadata and
+    /// client-selected size are committed. Some Chromium applications model
+    /// small auxiliary panels as unparented toplevels rather than xdg_popup;
+    /// their same-app sibling is the only reliable relationship they expose.
+    pub(super) fn defer_initial_auxiliary_toplevel_placement(&mut self, surface: &WlSurface) {
+        let pointer_location = Point::<i32, Logical>::from((
+            self.pointer_location.x.floor() as i32,
+            self.pointer_location.y.floor() as i32,
+        ));
+        let Some(output_id) = self
+            .outputs
+            .iter()
+            .find(|output| output.logical_geometry.contains(pointer_location))
+            .or_else(|| self.outputs.first())
+            .map(|output| output.id)
+        else {
+            return;
+        };
+        if let Some(record) = self.ensure_window_record_for_surface(&surface.id()) {
+            record.pending_auxiliary_toplevel_placement = Some(PendingAuxiliaryToplevelPlacement {
+                pointer_location,
+                output_id,
+            });
+        }
+    }
+
     pub(super) fn restored_placement_for_identity(
         &self,
         identity: &WindowIdentity,
@@ -764,6 +790,60 @@ impl WaylandFrontend {
             width = target.size.w,
             height = target.size.h,
             "placed client-sized Wayland window"
+        );
+        Some(target)
+    }
+
+    /// Places a floating same-app toplevel at the pointer captured when it was
+    /// created. Proper xdg_popup and parented xdg_toplevel surfaces retain
+    /// their protocol placement, while regular tiled windows retain layout
+    /// ownership.
+    pub(super) fn reconcile_initial_auxiliary_toplevel_placement(
+        &mut self,
+        window: &Window,
+    ) -> Option<Rectangle<i32, Logical>> {
+        let root = self.window_root_surface(window)?;
+        let object_id = root.id();
+        let pending = self
+            .window_record_for_surface(&object_id)?
+            .pending_auxiliary_toplevel_placement?;
+        let committed = window.geometry();
+        if committed.size.w <= 0 || committed.size.h <= 0 {
+            return None;
+        }
+
+        let has_same_app_sibling = self
+            .window_identity(window)
+            .is_some_and(|identity| self.window_has_same_identity_sibling(window, &identity));
+        let should_place = should_place_auxiliary_toplevel_at_pointer(
+            self.window_has_transient_parent(window),
+            has_same_app_sibling,
+            self.window_is_layout_managed(window),
+        );
+        self.window_record_for_surface_mut(&object_id)?
+            .pending_auxiliary_toplevel_placement = None;
+        if !should_place {
+            return None;
+        }
+
+        let output_geometry = self
+            .outputs
+            .iter()
+            .find(|output| output.id == pending.output_id)
+            .map(|output| output.logical_geometry)
+            .or_else(|| self.fallback_output_geometry())?;
+        let target = clamp_window_geometry(
+            Rectangle::new(pending.pointer_location, committed.size),
+            output_geometry,
+        );
+        self.space.relocate_element(window, target.loc);
+        self.update_window_output_membership(window);
+        info!(
+            x = target.loc.x,
+            y = target.loc.y,
+            width = target.size.w,
+            height = target.size.h,
+            "placed unparented auxiliary Wayland toplevel at pointer"
         );
         Some(target)
     }
@@ -1578,6 +1658,7 @@ impl WaylandFrontend {
             let cached_route_is_stale =
                 self.client_input_route_cache.as_ref().is_some_and(|route| {
                     &route.surface == surface
+                        || route.layer_root.as_ref() == Some(surface)
                         || (removes_toplevel
                             && self.owning_toplevel_surface(&route.surface).as_ref()
                                 == Some(surface))
@@ -1585,6 +1666,7 @@ impl WaylandFrontend {
             let pointer_route_is_stale =
                 self.client_pointer_capture.as_ref().is_some_and(|route| {
                     &route.surface == surface
+                        || route.layer_root.as_ref() == Some(surface)
                         || (removes_toplevel
                             && self.owning_toplevel_surface(&route.surface).as_ref()
                                 == Some(surface))
@@ -1594,6 +1676,7 @@ impl WaylandFrontend {
                 .iter()
                 .filter_map(|(slot, route)| {
                     (&route.surface == surface
+                        || route.layer_root.as_ref() == Some(surface)
                         || (removes_toplevel
                             && self.owning_toplevel_surface(&route.surface).as_ref()
                                 == Some(surface)))

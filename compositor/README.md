@@ -167,9 +167,10 @@ to choose the display that owns primary shell surfaces and the render ticker;
 when omitted or temporarily disconnected, Denial uses the enabled output with
 the highest refresh rate. Use
 `transform=NAME,normal|90|180|270|flipped|flipped-90|flipped-180|flipped-270`
-for rotation and reflection. Add `vrr=NAME` for each output that should use
-variable refresh rate, or `disabled=NAME` to leave a connected output outside
-the KMS and Wayland topology. Flutter projects transformed outputs directly
+for rotation and reflection; angles follow Wayland's counterclockwise
+convention. Add `vrr=NAME` for each output that should use variable refresh
+rate, or `disabled=NAME` to leave a connected output outside the KMS and
+Wayland topology. Flutter projects transformed outputs directly
 into their native, unrotated scanout buffers; the KMS mode and primary-plane
 rotation remain unchanged, including for 90/270-degree transforms. Denial
 validates mode and VRR changes with an atomic `TEST_ONLY` commit before

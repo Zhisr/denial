@@ -17,6 +17,12 @@ occlusion or its position within the composed desktop. Buffer constraints are
 republished when the toplevel size or effective output scale changes, and an
 unmapped toplevel closes its foreign handle and stops its capture sessions.
 
+Denial reconstructs the capture atlas in logical desktop orientation. Native
+scanout buffers are sampled with their `wl_output.transform` exactly once, and
+the resulting capture buffers advertise normal orientation. The built-in
+region selector and direct screencopy clients therefore receive the same
+upright pixels for normal, rotated, and reflected outputs.
+
 ## Direct capture
 
 Tools such as `grim` and `wf-recorder` can connect directly to the Denial

@@ -129,6 +129,11 @@ prevent QQ from selecting Xwayland for its windows. Any hidden Xlib clipboard
 reader still receives an ordinary failed X11 selection response and is not
 treated as part of the focused Wayland client.
 
+Session clipboard tools may publish and observe the clipboard through both
+`ext-data-control-v1` and `zwlr-data-control-v1`. This lets tools such as
+`wl-copy` own data without mapping a temporary surface and taking keyboard
+focus merely to obtain a data-device serial.
+
 When an Xwayland window owns keyboard focus, Denial instead permits clipboard
 reads from that shared Xwayland server. X11 clients within the server form one
 legacy trust domain because upstream Smithay does not identify the requesting

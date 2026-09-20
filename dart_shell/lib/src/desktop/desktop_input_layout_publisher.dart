@@ -37,7 +37,8 @@ class _DesktopInputLayoutPublisherState
   Widget build(BuildContext context) {
     ref.watch(
       shellControllerProvider.select(
-        (state) => (state.windows, state.windowSnapshotSequence),
+        (state) =>
+            (state.windows, state.layerSurfaces, state.windowSnapshotSequence),
       ),
     );
     ref.watch(
@@ -101,6 +102,7 @@ class _DesktopInputLayoutPublisherState
         viewSize: viewSize,
         devicePixelRatio: devicePixelRatio,
         windows: shell.windows,
+        layerSurfaces: shell.layerSurfaces,
         windowSnapshotSequence: shell.windowSnapshotSequence,
         desktop: ref.read(desktopWorkspaceProvider),
         switcher: ref.read(desktopWindowSwitcherProvider),
@@ -123,6 +125,24 @@ class _DesktopInputLayoutPublisherState
       return false;
     }
     final windows = source.windows;
+    final layerSurfaces = source.layerSurfaces
+        .where((surface) => surface.geometry != null)
+        .toList(growable: false);
+    final backgroundLayerSurfaces = layerSurfaces
+        .where(
+          (surface) =>
+              surface.contentKind ==
+                  DenialWindowContentKind.layerShellBackground ||
+              surface.contentKind == DenialWindowContentKind.layerShellBottom,
+        )
+        .toList(growable: false);
+    final foregroundLayerSurfaces = layerSurfaces
+        .where(
+          (surface) =>
+              surface.contentKind == DenialWindowContentKind.layerShellTop ||
+              surface.contentKind == DenialWindowContentKind.layerShellOverlay,
+        )
+        .toList(growable: false);
     final desktop = source.desktop;
     final interactions = source.interactions;
 
@@ -166,12 +186,26 @@ class _DesktopInputLayoutPublisherState
     }
 
     var shellRegions = <Rect>[canvas];
+    void subtractSurfaceTree(DenialWindow surface) {
+      final geometry = surface.geometry!;
+      shellRegions = _subtractFromAll(shellRegions, geometry);
+      for (final popup in surface.popupRoots) {
+        final popupRect = surface.mapSurfaceRect(popup, geometry);
+        if (!popupRect.isEmpty) {
+          shellRegions = _subtractFromAll(shellRegions, popupRect);
+        }
+      }
+    }
+
     // Hover panels must not take pointer ownership of the whole scene. Changing
     // ownership while leaving a hot edge can synthesize another edge enter and
     // make the launcher repeatedly open and close over client windows.
     if (!interactions.capturesFullScene) {
       for (final popup in popupSurfaces) {
         shellRegions = _subtractFromAll(shellRegions, popup.geometry!);
+      }
+      for (final surface in backgroundLayerSurfaces) {
+        subtractSurfaceTree(surface);
       }
       for (final placement in placements) {
         final visualContentRect = placement.contentRect;
@@ -200,9 +234,27 @@ class _DesktopInputLayoutPublisherState
         shellRegions.add(clipped);
       }
     }
+    if (!interactions.capturesFullScene) {
+      // Top and overlay layer surfaces are painted above Flutter's normal
+      // desktop controls, so they also outrank child shell hit regions.
+      for (final surface in foregroundLayerSurfaces) {
+        subtractSurfaceTree(surface);
+      }
+    }
 
     final inputWindows = <InputWindowRegion>[];
     final visibleSurfaceIds = <int>{};
+    for (final surface in layerSurfaces) {
+      visibleSurfaceIds.addAll(surface.visibleSurfaceIds);
+    }
+
+    inputWindows.addAll(
+      desktopLayerInputRegions(
+        foregroundLayerSurfaces,
+        zBand: 2000000000,
+        enabled: !interactions.capturesFullScene,
+      ),
+    );
     for (final popup in popupSurfaces) {
       visibleSurfaceIds.addAll(popup.visibleSurfaceIds);
       if (!interactions.capturesFullScene) {
@@ -212,7 +264,7 @@ class _DesktopInputLayoutPublisherState
             surfaceId: popup.objectId,
             rect: popup.geometry!,
             sourceRect: popup.contentCoordinateRect,
-            z: 0x7fffffff,
+            z: 1000000000,
             geometryLocked: true,
           ),
         );
@@ -324,6 +376,13 @@ class _DesktopInputLayoutPublisherState
         nativeDragActive: placement.dragging,
       );
     }
+    inputWindows.addAll(
+      desktopLayerInputRegions(
+        backgroundLayerSurfaces,
+        zBand: -1000000000,
+        enabled: !interactions.capturesFullScene,
+      ),
+    );
 
     _configureTracker.retainWindowIds(windowsById.keys.toSet());
     final snapshot = InputLayoutSnapshot(
@@ -364,11 +423,67 @@ class _DesktopInputLayoutPublisherState
   }
 }
 
+List<InputWindowRegion> desktopLayerInputRegions(
+  List<DenialWindow> surfaces, {
+  required int zBand,
+  bool enabled = true,
+}) {
+  if (!enabled) {
+    return const <InputWindowRegion>[];
+  }
+  final regions = <InputWindowRegion>[];
+  var nextZ =
+      zBand +
+      surfaces.fold<int>(0, (count, surface) {
+        return count + surface.popupRoots.length + 1;
+      });
+  for (var index = surfaces.length - 1; index >= 0; index -= 1) {
+    final surface = surfaces[index];
+    final geometry = surface.geometry;
+    if (geometry == null) {
+      continue;
+    }
+    for (final popup in surface.popupRoots.toList().reversed) {
+      final popupRect = surface.mapSurfaceRect(popup, geometry);
+      if (popupRect.isEmpty) {
+        continue;
+      }
+      regions.add(
+        InputWindowRegion(
+          window: surface,
+          surfaceId: popup.surfaceId,
+          rect: popupRect,
+          sourceRect: Rect.fromLTWH(
+            0.0,
+            0.0,
+            popup.surfaceWidth,
+            popup.surfaceHeight,
+          ),
+          z: nextZ--,
+          geometryLocked: true,
+        ),
+      );
+    }
+    regions.add(
+      InputWindowRegion(
+        window: surface,
+        surfaceId: surface.objectId,
+        rect: geometry,
+        sourceRect: surface.contentCoordinateRect,
+        z: nextZ--,
+        geometryLocked: true,
+      ),
+    );
+  }
+  return regions;
+}
+
 class _DesktopInputLayoutSource {
   const _DesktopInputLayoutSource({
     required this.viewSize,
     required this.devicePixelRatio,
     required this.windows,
+    required this.layerSurfaces,
     required this.windowSnapshotSequence,
     required this.desktop,
     required this.switcher,
@@ -380,6 +495,7 @@ class _DesktopInputLayoutSource {
   final Size viewSize;
   final double devicePixelRatio;
   final List<DenialWindow> windows;
+  final List<DenialWindow> layerSurfaces;
   final int windowSnapshotSequence;
   final DesktopWorkspaceState desktop;
   final DesktopWindowSwitcherState? switcher;
@@ -391,6 +507,7 @@ class _DesktopInputLayoutSource {
     return viewSize == other.viewSize &&
         devicePixelRatio == other.devicePixelRatio &&
         identical(windows, other.windows) &&
+        identical(layerSurfaces, other.layerSurfaces) &&
         windowSnapshotSequence == other.windowSnapshotSequence &&
         desktop.inputLayoutRevision == other.desktop.inputLayoutRevision &&
         identical(switcher, other.switcher) &&

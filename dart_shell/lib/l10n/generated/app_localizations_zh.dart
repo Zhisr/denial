@@ -1888,13 +1888,13 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsDisplayRotationNormal => '横向';
 
   @override
-  String get settingsDisplayRotation90 => '顺时针 90°';
+  String get settingsDisplayRotation90 => '逆时针 90°';
 
   @override
   String get settingsDisplayRotation180 => '倒置';
 
   @override
-  String get settingsDisplayRotation270 => '逆时针 90°';
+  String get settingsDisplayRotation270 => '顺时针 90°';
 
   @override
   String get settingsDisplayScale => '缩放';

@@ -1963,13 +1963,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsDisplayRotationNormal => 'Landscape';
 
   @override
-  String get settingsDisplayRotation90 => '90° clockwise';
+  String get settingsDisplayRotation90 => '90° counterclockwise';
 
   @override
   String get settingsDisplayRotation180 => 'Upside down';
 
   @override
-  String get settingsDisplayRotation270 => '90° counterclockwise';
+  String get settingsDisplayRotation270 => '90° clockwise';
 
   @override
   String get settingsDisplayScale => 'Scale';
