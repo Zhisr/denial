@@ -235,11 +235,11 @@ jobs:
           printf '%s\n' "${nix_paths[@]}" \
             | sort --unique \
             | tee "$EVIDENCE_ROOT/nix-cache-paths.txt"
+          cache_paths="$(paste -sd ' ' "$EVIDENCE_ROOT/nix-cache-paths.txt")"
+          [[ "$cache_paths" != *$'\n'* ]]
           {
             printf 'cache_name=%s\n' "$cache_name"
-            printf 'paths<<DENIAL_NIX_PATHS\n'
-            cat "$EVIDENCE_ROOT/nix-cache-paths.txt"
-            printf 'DENIAL_NIX_PATHS\n'
+            printf 'paths=%s\n' "$cache_paths"
           } >>"$GITHUB_OUTPUT"
 
       - name: Bootstrap pinned development toolchains
