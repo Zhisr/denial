@@ -121,6 +121,7 @@ pub(super) struct Options {
     pub(super) rescan_at_frame: Option<u64>,
     pub(super) simulate_hotplug_at_frame: Option<u64>,
     pub(super) wayland: bool,
+    pub(super) xwayland: bool,
     pub(super) flutter_bundle: Option<PathBuf>,
     #[cfg(feature = "flutter")]
     pub(super) flutter_renderer: RendererBackend,
@@ -162,6 +163,7 @@ impl Options {
             rescan_at_frame: None,
             simulate_hotplug_at_frame: None,
             wayland: false,
+            xwayland: false,
             flutter_bundle: None,
             #[cfg(feature = "flutter")]
             flutter_renderer: RendererBackend::default(),
@@ -198,6 +200,7 @@ impl Options {
         let mut rescan_at_frame = None;
         let mut simulate_hotplug_at_frame = None;
         let mut wayland = false;
+        let mut xwayland = cfg!(feature = "xwayland");
         let mut flutter_bundle = None;
         #[cfg(feature = "flutter")]
         let mut flutter_renderer = None;
@@ -282,6 +285,7 @@ impl Options {
                     simulate_hotplug_at_frame = Some(frame);
                 }
                 "--wayland" => wayland = true,
+                "--no-xwayland" => xwayland = false,
                 "--start-locked" => start_locked = true,
                 "--flutter-bundle" => {
                     flutter_bundle = Some(PathBuf::from(
@@ -338,6 +342,7 @@ impl Options {
                          [--rescan-at-frame N] \
                          [--simulate-hotplug-at-frame N] \
                          [--wayland] \
+                         [--no-xwayland] \
                          [--flutter-bundle PATH] \
                          [--flutter-renderer skia|impeller] \
                          [--software-rendering] \
@@ -482,6 +487,7 @@ impl Options {
             rescan_at_frame,
             simulate_hotplug_at_frame,
             wayland,
+            xwayland,
             flutter_bundle,
             #[cfg(feature = "flutter")]
             flutter_renderer: flutter_renderer.unwrap_or_default(),
@@ -1353,5 +1359,14 @@ mod tests {
 
         assert!(!default.software_rendering);
         assert!(software.software_rendering);
+    }
+
+    #[test]
+    fn xwayland_defaults_to_compiled_support_and_can_be_disabled() {
+        let default = Options::parse_from(Vec::<String>::new()).unwrap();
+        let disabled = Options::parse_from(["--no-xwayland".to_owned()]).unwrap();
+
+        assert_eq!(default.xwayland, cfg!(feature = "xwayland"));
+        assert!(!disabled.xwayland);
     }
 }

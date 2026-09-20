@@ -216,9 +216,7 @@ impl RuntimeState {
         if let Some(frontend) = self.wayland.as_ref() {
             self.pending_window_events
                 .extend(frontend.replay_window_state_events());
-            if let Some(tray) = frontend.xembed_tray.as_ref() {
-                tray.request_replay();
-            }
+            frontend.xwayland.request_xembed_replay();
         }
         let workspace_states = self
             .wayland

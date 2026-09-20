@@ -10,6 +10,7 @@ impl WaylandFrontend {
         session: LibSeatSession,
         seat_name: &str,
         drm_device: DrmDeviceFd,
+        xwayland_enabled: bool,
         work_area: crate::options::WorkAreaOptions,
         settings: SettingsManager,
         shortcuts: ShortcutManager,
@@ -19,11 +20,9 @@ impl WaylandFrontend {
         let loop_handle = event_loop.handle();
         let compositor_state = CompositorState::new::<RuntimeState>(&display_handle);
         let xdg_shell_state = XdgShellState::new::<RuntimeState>(&display_handle);
+        let xdg_foreign_state = XdgForeignState::new::<RuntimeState>(&display_handle);
         let layer_shell_state = WlrLayerShellState::new::<RuntimeState>(&display_handle);
         let xdg_activation_state = XdgActivationState::new::<RuntimeState>(&display_handle);
-        let xwayland_shell_state = XWaylandShellState::new::<RuntimeState>(&display_handle);
-        let xwayland_keyboard_grab_state =
-            XWaylandKeyboardGrabState::new::<RuntimeState>(&display_handle);
         let relative_pointer_manager_state =
             RelativePointerManagerState::new::<RuntimeState>(&display_handle);
         let pointer_constraints_state =
@@ -239,44 +238,13 @@ impl WaylandFrontend {
 
         let client_budget = Arc::new(WaylandClientBudget::default());
         let socket_name = init_listener(display, event_loop, client_budget)?;
-        let xwayland_scale_mode = xwayland::scale_mode_from_environment();
-        let xwayland_scale_120 =
-            xwayland::scale_for_engine(atlas.engine_scale_120, xwayland_scale_mode);
-        let xwayland_dpi = xwayland::dpi(xwayland_scale_120);
-        let xwayland_args = ["-dpi".to_owned(), xwayland_dpi.to_string()];
-        let xwayland_cursor_size = settings.cursor_size();
-        let mut xwayland_environment = vec![(
-            OsString::from("XCURSOR_SIZE"),
-            OsString::from(xwayland_cursor_size.to_string()),
-        )];
-        #[cfg(feature = "flutter")]
-        if let Some(environment) = crate::xcursor_sentinel::environment() {
-            xwayland_environment.extend(
-                environment
-                    .into_iter()
-                    .map(|(name, value)| (OsString::from(name), OsString::from(value))),
-            );
-        }
-        // Smithay has no pre-exec hook here. Temporarily widen this spawning
-        // thread, synchronized with our guard, so Xwayland gets the app domain.
-        let (xwayland, xwayland_client) = crate::cpu_scheduling::with_application_affinity(|| {
-            XWayland::spawn(
-                &display_handle,
-                None,
-                xwayland_environment,
-                xwayland_args,
-                true,
-                Stdio::null(),
-                Stdio::null(),
-                |_| {},
-            )
-        })?;
-        xwayland_client
-            .get_data::<XWaylandClientData>()
-            .expect("Xwayland client is missing compositor state")
-            .compositor_state
-            .set_client_scale(xwayland::client_scale(xwayland_scale_120));
-        let xdisplay = xwayland.display_number();
+        let xwayland = xwayland::XWaylandState::start(
+            xwayland_enabled,
+            event_loop,
+            &display_handle,
+            atlas.engine_scale_120,
+            &settings,
+        )?;
         let window_placement_path = default_state_path();
         let window_placements = match WindowPlacementStore::load(window_placement_path.clone()) {
             Ok(store) => store,
@@ -295,70 +263,6 @@ impl WaylandFrontend {
                 "loaded saved window placements"
             );
         }
-        let xwm_loop_handle = event_loop.handle();
-        let xwm_display_handle = display_handle.clone();
-        let xwm_client = xwayland_client.clone();
-        event_loop
-            .handle()
-            .insert_source(xwayland, move |event, _, state| match event {
-                XWaylandEvent::Ready {
-                    x11_socket,
-                    display_number,
-                } => match X11Wm::start_wm(
-                    xwm_loop_handle.clone(),
-                    &xwm_display_handle,
-                    x11_socket,
-                    xwm_client.clone(),
-                ) {
-                    Ok(mut xwm) => {
-                        let Some(frontend) = state.wayland.as_mut() else {
-                            error!(
-                                display_number,
-                                "Xwayland became ready without Wayland frontend state"
-                            );
-                            return;
-                        };
-                        if let Err(error) = xwayland::publish_settings(
-                            &mut xwm,
-                            frontend.xwayland_scale_120,
-                            frontend.settings.cursor_size(),
-                        ) {
-                            error!(%error, "could not publish Xwayland settings");
-                        }
-                        frontend.xwm = Some(xwm);
-                        #[cfg(feature = "flutter")]
-                        match super::super::xembed_tray::XEmbedTray::start(frontend.xdisplay_name())
-                        {
-                            Ok(tray) => frontend.xembed_tray = Some(tray),
-                            Err(error) => {
-                                warn!(%error, "could not start the XEmbed tray host")
-                            }
-                        }
-                        info!(
-                            display = %format_args!(":{display_number}"),
-                            scale = xwayland::client_scale(frontend.xwayland_scale_120),
-                            scale_mode = ?frontend.xwayland_scale_mode,
-                            dpi = xwayland::dpi(frontend.xwayland_scale_120),
-                            cursor_size = frontend.settings.cursor_size(),
-                            "Xwayland is ready"
-                        );
-                        state.scene_sync.mark_dirty();
-                    }
-                    Err(error) => {
-                        error!(
-                            %error,
-                            display_number,
-                            "could not start the Xwayland window manager"
-                        );
-                    }
-                },
-                XWaylandEvent::Error => {
-                    error!(
-                        display = %format_args!(":{xdisplay}"),
-                        "Xwayland exited during startup"
-                    );
-                }
-            })?;
         let libinput = init_libinput(event_loop, session, seat_name)?;
         Ok(Self {
             start_time: Instant::now(),
@@ -368,21 +272,14 @@ impl WaylandFrontend {
             space,
             compositor_state,
             xdg_shell_state,
+            xdg_foreign_state,
             xdg_activation_state,
-            xwayland_shell_state,
-            _xwayland_keyboard_grab_state: xwayland_keyboard_grab_state,
+            xwayland,
             _relative_pointer_manager_state: relative_pointer_manager_state,
             _pointer_constraints_state: pointer_constraints_state,
             _viewporter_state: viewporter_state,
             _alpha_modifier_state: alpha_modifier_state,
             _fractional_scale_manager_state: fractional_scale_manager_state,
-            xwm: None,
-            #[cfg(feature = "flutter")]
-            xembed_tray: None,
-            xwayland_client,
-            xwayland_scale_mode,
-            xwayland_scale_120,
-            xdisplay,
             _xdg_decoration_state: xdg_decoration_state,
             _cursor_shape_state: cursor_shape_state,
             _tablet_manager_state: tablet_manager_state,

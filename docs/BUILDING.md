@@ -32,6 +32,19 @@ tools/denial-pc build
 tools/denial-pc test
 ```
 
+Normal builds include Xwayland. To compile and run a Wayland-only compositor,
+set the same switch for the build and session commands:
+
+```sh
+DENIAL_PC_XWAYLAND=0 tools/denial-pc build
+DENIAL_PC_XWAYLAND=0 tools/denial-pc session
+```
+
+This selects the `flutter` Cargo feature without the independent `xwayland`
+feature, so Smithay's Xwayland implementation and `x11rb` are absent from the
+resolved build graph. A normal binary can instead disable only server startup
+for one invocation with `deniald --no-xwayland`.
+
 Run only the lock-matched Flutter shell tests, optionally forwarding a test
 path or other `flutter test` arguments:
 
@@ -158,7 +171,7 @@ The host needs:
 - `pkg-config`;
 - RealtimeKit (`rtkit`) for the compositor's unprivileged high-priority
   scheduling fallback;
-- Xwayland;
+- Xwayland, unless building with `DENIAL_PC_XWAYLAND=0`;
 - the Fontconfig development files used by the Linux engine's system-font
   backend;
 - the development libraries used by Smithay's DRM, GBM/EGL, libinput,

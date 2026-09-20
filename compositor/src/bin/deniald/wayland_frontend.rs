@@ -3,7 +3,6 @@ use std::error::Error;
 use std::ffi::{OsStr, OsString};
 #[cfg(feature = "flutter")]
 use std::hash::Hash;
-use std::process::Stdio;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -100,10 +99,8 @@ use smithay::wayland::socket::ListeningSocketSource;
 use smithay::wayland::tablet_manager::{TabletManagerState, TabletSeatHandler};
 use smithay::wayland::viewporter::ViewporterState;
 use smithay::wayland::alpha_modifier::{AlphaModifierState, AlphaModifierSurfaceCachedState};
-use smithay::wayland::xwayland_shell::XWaylandShellState;
-use smithay::wayland::xwayland_keyboard_grab::XWaylandKeyboardGrabState;
 use smithay::wayland::xdg_activation::XdgActivationState;
-use smithay::xwayland::{X11Wm, XWayland, XWaylandClientData, XWaylandEvent};
+use smithay::wayland::xdg_foreign::{XdgForeignHandler, XdgForeignState};
 use tracing::{error, info, warn};
 
 #[cfg(feature = "flutter")]
@@ -210,7 +207,11 @@ mod window_state;
 #[cfg(feature = "flutter")]
 #[path = "wayland_frontend/workspace.rs"]
 mod workspace;
-#[path = "wayland_frontend/xwayland.rs"]
+#[cfg_attr(
+    not(feature = "xwayland"),
+    path = "wayland_frontend/xwayland_disabled.rs"
+)]
+#[cfg_attr(feature = "xwayland", path = "wayland_frontend/xwayland.rs")]
 mod xwayland;
 
 pub(super) use clipboard_io::DeferredClipboardCapture;
@@ -391,21 +392,14 @@ pub(super) struct WaylandFrontend {
     pub space: Space<Window>,
     pub compositor_state: CompositorState,
     pub xdg_shell_state: XdgShellState,
+    pub xdg_foreign_state: XdgForeignState,
     pub xdg_activation_state: XdgActivationState,
-    pub xwayland_shell_state: XWaylandShellState,
-    pub _xwayland_keyboard_grab_state: XWaylandKeyboardGrabState,
+    pub(crate) xwayland: xwayland::XWaylandState,
     pub _relative_pointer_manager_state: RelativePointerManagerState,
     pub _pointer_constraints_state: PointerConstraintsState,
     _viewporter_state: ViewporterState,
     _alpha_modifier_state: AlphaModifierState,
     _fractional_scale_manager_state: FractionalScaleManagerState,
-    pub xwm: Option<X11Wm>,
-    #[cfg(feature = "flutter")]
-    pub xembed_tray: Option<super::xembed_tray::XEmbedTray>,
-    xwayland_client: Client,
-    xwayland_scale_mode: xwayland::XWaylandScaleMode,
-    xwayland_scale_120: u32,
-    xdisplay: u32,
     _xdg_decoration_state: XdgDecorationState,
     _cursor_shape_state: CursorShapeManagerState,
     _tablet_manager_state: TabletManagerState,

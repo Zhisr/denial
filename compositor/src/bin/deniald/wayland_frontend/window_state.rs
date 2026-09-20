@@ -35,21 +35,7 @@ impl WaylandFrontend {
     }
 
     pub(super) fn keyboard_focus_for_window(&self, window: &Window) -> Option<KeyboardFocusTarget> {
-        if let Some(surface) = window.x11_surface() {
-            // Override-redirect windows are client-owned popups, not XWM
-            // activation targets. Giving one X keyboard focus would remove
-            // focus from its managed owner; clients such as Steam respond to
-            // that FocusOut by immediately dismissing the popup.
-            if surface.is_override_redirect() {
-                return None;
-            }
-            // X11Surface implements the ICCCM focus handshake in addition to
-            // forwarding wl_keyboard events to its associated wl_surface.
-            surface.wl_surface()?;
-            return Some(KeyboardFocusTarget::X11(surface.clone()));
-        }
-        self.window_root_surface(window)
-            .map(KeyboardFocusTarget::Wayland)
+        ManagedWindow::new(window)?.keyboard_focus_target()
     }
 
     /// Mints a one-shot token for a user launch initiated by Denial's shell.
@@ -117,39 +103,9 @@ impl WaylandFrontend {
         for pinned in &pinned_windows {
             self.space.raise_element(pinned, false);
         }
-        let Some(xwm) = self.xwm.as_mut() else {
-            return;
-        };
-        for candidate in &raise_order {
-            let Some(surface) = candidate.x11_surface() else {
-                continue;
-            };
-            // Override-redirect popups are deliberately absent from XWM's
-            // EWMH stack and are already placed by Xwayland at map time.
-            if surface.is_override_redirect() {
-                continue;
-            }
-            if let Err(error) = xwm.raise_window(surface) {
-                warn!(
-                    %error,
-                    window = surface.window_id(),
-                    "could not synchronize raised X11 transient family"
-                );
-            }
-        }
+        self.xwayland.raise_windows(&raise_order);
         #[cfg(feature = "flutter")]
-        for pinned in pinned_windows {
-            let Some(surface) = pinned.x11_surface() else {
-                continue;
-            };
-            if let Err(error) = xwm.raise_window(surface) {
-                warn!(
-                    %error,
-                    window = surface.window_id(),
-                    "could not preserve pinned X11 window order"
-                );
-            }
-        }
+        self.xwayland.raise_windows(&pinned_windows);
     }
 
     fn transient_parent_window(&self, window: &Window) -> Option<Window> {
@@ -157,13 +113,12 @@ impl WaylandFrontend {
             return xdg_transient_parent_surface(window)
                 .and_then(|parent| self.window_for_root_surface(&parent));
         }
-        let parent_id = window.x11_surface()?.is_transient_for()?;
+        let parent_id = ManagedWindow::new(window)?.facts().transient_parent_id?;
         self.space
             .elements()
             .find(|candidate| {
-                candidate
-                    .x11_surface()
-                    .is_some_and(|surface| surface.window_id() == parent_id)
+                ManagedWindow::new(candidate).and_then(|window| window.facts().protocol_window_id)
+                    == Some(parent_id)
             })
             .cloned()
     }
@@ -357,20 +312,7 @@ impl WaylandFrontend {
     }
 
     pub(super) fn window_identity(&self, window: &Window) -> Option<WindowIdentity> {
-        if let Some(toplevel) = window.toplevel() {
-            return with_states(toplevel.wl_surface(), |states| {
-                let attributes = states
-                    .data_map
-                    .get::<XdgToplevelSurfaceData>()?
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner());
-                WindowIdentity::wayland(attributes.app_id.as_deref()?)
-            });
-        }
-        let x11 = window.x11_surface()?;
-        (!x11.is_override_redirect())
-            .then(|| x11.class())
-            .and_then(|class| WindowIdentity::x11(&class))
+        ManagedWindow::new(window)?.identity()
     }
 
     pub(super) fn window_has_same_identity_sibling(
@@ -393,15 +335,28 @@ impl WaylandFrontend {
         if window.toplevel().is_some() {
             return xdg_transient_parent_surface(window).is_some();
         }
-        window
-            .x11_surface()
-            .is_some_and(|surface| surface.is_transient_for().is_some())
+        ManagedWindow::new(window)
+            .is_some_and(|window| window.facts().transient_parent_id.is_some())
+    }
+
+    /// Reconciles a live XDG toplevel after either xdg-shell or xdg-foreign
+    /// changes its parent. Both protocol paths update the same Smithay parent
+    /// state, so layout membership, placement and stacking remain one policy.
+    pub(super) fn reconcile_xdg_parent_change(&mut self, window: &Window) {
+        let previous_target = self.window_geometry_target(window);
+        self.reconcile_window_layout(window);
+        self.reconcile_xdg_transient_window_placement(window);
+        self.raise_window(window, false);
+        if self.window_geometry_target(window) != previous_target {
+            self.update_window_output_membership(window);
+        }
     }
 
     pub(super) fn forget_xdg_transient_window_placement(&mut self, window: &Window) {
         if let Some(root) = window.toplevel().map(|toplevel| toplevel.wl_surface()) {
             if let Some(record) = self.window_record_for_surface_mut(&root.id()) {
                 record.placed_transient_parent = None;
+                record.placed_transient_parent_geometry = None;
             }
         }
     }
@@ -413,7 +368,8 @@ impl WaylandFrontend {
             .and_then(|root| self.surface_ids.get(&root.id()).copied())
     }
 
-    /// Places a parented XDG toplevel once its client-selected size exists.
+    /// Places a parented XDG toplevel once its client-selected size exists and
+    /// recenters it whenever the parent geometry changes.
     ///
     /// `new_toplevel` runs before the client can submit `set_parent`, and the
     /// initial size-less configure intentionally lets the client choose the
@@ -432,16 +388,10 @@ impl WaylandFrontend {
         let Some(parent_surface) = xdg_transient_parent_surface(window) else {
             if let Some(record) = self.window_record_for_surface_mut(&object_id) {
                 record.placed_transient_parent = None;
+                record.placed_transient_parent_geometry = None;
             }
             return None;
         };
-        if self
-            .window_record_for_surface(&object_id)
-            .and_then(|record| record.placed_transient_parent.as_ref())
-            .is_some_and(|placed| placed == &parent_surface.id())
-        {
-            return None;
-        }
         let client = ManagedWindow::new(window)?.facts().client_state;
         if client.fullscreen || client.maximized {
             return None;
@@ -452,14 +402,30 @@ impl WaylandFrontend {
         }
         let parent = self.window_for_root_surface(&parent_surface)?;
         let parent_geometry = self.window_geometry_target(&parent);
+        let parent_id = parent_surface.id();
+        let (same_parent, same_parent_geometry) = self
+            .window_record_for_surface(&object_id)
+            .map_or((false, false), |record| {
+                (
+                    record.placed_transient_parent.as_ref() == Some(&parent_id),
+                    record.placed_transient_parent_geometry == Some(parent_geometry),
+                )
+            });
+        if same_parent && same_parent_geometry {
+            return None;
+        }
         let output_geometry = self
             .output_for_geometry(parent_geometry)
             .map(|output| output.logical_geometry)
             .or_else(|| self.fallback_output_geometry())?;
         let target = centered_transient_geometry(committed.size, parent_geometry, output_geometry);
-        self.set_window_geometry_target(window, target);
-        self.ensure_window_record_for_surface(&object_id)?
-            .placed_transient_parent = Some(parent_surface.id());
+        let geometry_changed = self.window_geometry_target(window) != target;
+        if geometry_changed {
+            self.set_window_geometry_target(window, target);
+        }
+        let record = self.ensure_window_record_for_surface(&object_id)?;
+        record.placed_transient_parent = Some(parent_id.clone());
+        record.placed_transient_parent_geometry = Some(parent_geometry);
 
         #[cfg(feature = "flutter")]
         if let (Some(window_id), Some(parent_id)) =
@@ -471,15 +437,35 @@ impl WaylandFrontend {
                 .workspace = Some(parent_location);
         }
 
-        info!(
-            x = target.loc.x,
-            y = target.loc.y,
-            width = target.size.w,
-            height = target.size.h,
-            parent = ?parent_surface.id(),
-            "placed parented Wayland toplevel"
-        );
-        Some(target)
+        if !same_parent {
+            info!(
+                x = target.loc.x,
+                y = target.loc.y,
+                width = target.size.w,
+                height = target.size.h,
+                parent = ?parent_id,
+                "placed parented Wayland toplevel"
+            );
+        }
+        geometry_changed.then_some(target)
+    }
+
+    /// Reconciles a transient subtree after its root moves or resizes.
+    /// Parent-before-child order keeps nested dialogs centered on the updated
+    /// geometry of their immediate parent.
+    pub(super) fn reconcile_xdg_transient_descendant_placements(
+        &mut self,
+        parent: &Window,
+    ) -> bool {
+        let descendants = self.transient_stack_from(parent);
+        descendants
+            .into_iter()
+            .filter(|candidate| candidate != parent && candidate.toplevel().is_some())
+            .fold(false, |changed, candidate| {
+                self.reconcile_xdg_transient_window_placement(&candidate)
+                    .is_some()
+                    || changed
+            })
     }
 
     pub(super) fn fallback_output_geometry(&self) -> Option<Rectangle<i32, Logical>> {
@@ -1025,6 +1011,7 @@ impl WaylandFrontend {
     /// Client configure requests use this while layout or shell policy owns
     /// the rectangle, so an acknowledgement cannot silently downgrade it to a
     /// one-shot pending target.
+    #[cfg(feature = "xwayland")]
     pub(super) fn reassert_window_geometry_target(&mut self, window: &Window) {
         let Some(root_surface) = self.window_root_surface(window) else {
             return;
@@ -1571,6 +1558,7 @@ impl WaylandFrontend {
         for record in self.window_registry.values_mut() {
             if record.placed_transient_parent.as_ref() == Some(&object_id) {
                 record.placed_transient_parent = None;
+                record.placed_transient_parent_geometry = None;
             }
         }
         if matches!(

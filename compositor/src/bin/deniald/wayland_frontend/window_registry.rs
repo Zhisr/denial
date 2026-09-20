@@ -17,6 +17,7 @@ impl WindowId {
         Self(raw)
     }
 
+    #[cfg(feature = "xwayland")]
     pub(super) const fn get(self) -> u64 {
         self.0
     }
@@ -33,6 +34,7 @@ pub(super) struct WindowRecord {
     pub(super) client_geometry_state_requested: bool,
     pub(super) pending_client_sized_placement: Option<PendingClientSizedPlacement>,
     pub(super) placed_transient_parent: Option<ObjectId>,
+    pub(super) placed_transient_parent_geometry: Option<Rectangle<i32, Logical>>,
     #[cfg(feature = "flutter")]
     pub(super) shell_presentation: Option<window_presentation::ShellWindowPresentation>,
     #[cfg(feature = "flutter")]

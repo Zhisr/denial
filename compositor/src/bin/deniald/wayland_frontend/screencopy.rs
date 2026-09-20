@@ -51,7 +51,6 @@ use smithay::reexports::wayland_server::{
 use smithay::utils::{
     Buffer as BufferCoords, Logical, Physical, Point, Rectangle, Size, Transform,
 };
-use smithay::wayland::compositor::with_states;
 use smithay::wayland::dmabuf::get_dmabuf;
 use smithay::wayland::foreign_toplevel_list::{
     ForeignToplevelHandle, ForeignToplevelListHandler, ForeignToplevelListState,
@@ -68,9 +67,10 @@ use smithay::wayland::image_copy_capture::{
     Session as ImageCopySession, SessionRef as ImageCopySessionRef,
 };
 use smithay::wayland::seat::WaylandFocus;
-use smithay::wayland::shell::xdg::XdgToplevelSurfaceData;
 use smithay::wayland::shm::{with_buffer_contents, with_buffer_contents_mut};
 use tracing::{debug, warn};
+
+use super::managed_window::ManagedWindow;
 
 #[cfg(feature = "flutter")]
 use super::super::{egl_context, flutter_runtime::OutputBufferLease};
@@ -963,22 +963,9 @@ fn render_toplevel_capture(
 }
 
 fn foreign_toplevel_metadata(window: &Window) -> (String, String) {
-    if let Some(toplevel) = window.toplevel() {
-        return with_states(toplevel.wl_surface(), |states| {
-            let Some(data) = states.data_map.get::<XdgToplevelSurfaceData>() else {
-                return (String::new(), String::new());
-            };
-            let data = data.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-            (
-                data.title.clone().unwrap_or_default(),
-                data.app_id.clone().unwrap_or_default(),
-            )
-        });
-    }
-    window.x11_surface().map_or_else(
-        || (String::new(), String::new()),
-        |surface| (surface.title(), surface.class()),
-    )
+    ManagedWindow::new(window)
+        .map(|window| window.metadata())
+        .unwrap_or_default()
 }
 
 impl WaylandFrontend {

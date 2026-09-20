@@ -10,15 +10,17 @@ DenialWindow nativeWindow({
   required String objectKind,
   required Rect geometry,
   required bool fullscreen,
+  int objectId = 7,
+  int? transientParentObjectId,
   bool maximized = false,
   DenialWindowContentKind contentKind = DenialWindowContentKind.surfaceTree,
 }) {
   return DenialWindow(
-    objectId: 7,
+    objectId: objectId,
     objectKind: objectKind,
-    surfaceId: 17,
-    windowId: 27,
-    textureId: 37,
+    surfaceId: objectId + 10,
+    windowId: objectId + 20,
+    textureId: objectId + 30,
     title: 'Protocol client',
     appId: 'protocol.client',
     width: geometry.width.round(),
@@ -36,6 +38,7 @@ DenialWindow nativeWindow({
     geometryWidth: geometry.width,
     geometryHeight: geometry.height,
     monitorId: 1,
+    transientParentObjectId: transientParentObjectId,
     maximized: maximized,
     fullscreen: fullscreen,
     transform: 0,
@@ -124,6 +127,50 @@ void main() {
     );
 
     expect(container.read(desktopWorkspaceProvider).placements, isEmpty);
+  });
+
+  test('activating a transient parent keeps its dialog above the family', () {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    final workspace = container.read(desktopWorkspaceProvider.notifier);
+    const viewSize = Size(1920, 1080);
+
+    final parent = nativeWindow(
+      objectKind: 'xdg',
+      geometry: const Rect.fromLTWH(100, 80, 900, 700),
+      fullscreen: false,
+    );
+    final dialog = nativeWindow(
+      objectId: 8,
+      objectKind: 'xdg',
+      geometry: const Rect.fromLTWH(350, 260, 400, 260),
+      fullscreen: false,
+      transientParentObjectId: parent.objectId,
+    );
+    final unrelated = nativeWindow(
+      objectId: 9,
+      objectKind: 'xdg',
+      geometry: const Rect.fromLTWH(1100, 100, 600, 600),
+      fullscreen: false,
+    );
+
+    workspace.syncWindows(
+      <DenialWindow>[parent, dialog, unrelated],
+      viewSize,
+      1,
+      snapshotSequence: 13,
+    );
+    workspace.activate(parent.objectId);
+
+    final placements = container.read(desktopWorkspaceProvider).placements;
+    expect(
+      placements[parent.objectId]!.z,
+      greaterThan(placements[unrelated.objectId]!.z),
+    );
+    expect(
+      placements[dialog.objectId]!.z,
+      greaterThan(placements[parent.objectId]!.z),
+    );
   });
 
   test('scrolling maximize keeps native off-screen strip geometry', () {

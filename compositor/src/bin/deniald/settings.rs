@@ -61,8 +61,10 @@ static SETTINGS_TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 // This is a backend policy, not a literal GTK_IM_MODULE value. GTK's Wayland
 // backend chooses its built-in input context automatically; Denial publishes
 // the X11 arm through XSettings so an Xwayland GTK client sees only `xim`.
+#[cfg(any(test, feature = "xwayland"))]
 const GTK_INPUT_METHOD_BACKEND_FALLBACK: &str = "wayland:xim";
 
+#[cfg(any(test, feature = "xwayland"))]
 pub(super) fn x11_gtk_input_method_backend_fallback() -> &'static str {
     GTK_INPUT_METHOD_BACKEND_FALLBACK
         .split_once(':')

@@ -19,8 +19,11 @@ flutter = [
     "dep:denial-flutter-engine",
     "dep:png",
     "dep:sha2",
-    "dep:x11rb",
     "wire",
+]
+xwayland = [
+    "dep:x11rb",
+    "smithay/xwayland",
 ]
 control = [
     "dep:rustix",
@@ -64,7 +67,6 @@ kms = [
     "smithay/desktop",
     "smithay/renderer_gl",
     "smithay/wayland_frontend",
-    "smithay/xwayland",
 ]
 
 [lib]

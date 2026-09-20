@@ -1,5 +1,7 @@
 //! Surface commit ingestion, snapshot publication, and Flutter scene projection.
 
+#[cfg(feature = "flutter")]
+use super::managed_window::ManagedWindow;
 use super::*;
 #[cfg(feature = "flutter")]
 use std::sync::Mutex;
@@ -142,13 +144,7 @@ impl WaylandFrontend {
     }
 
     pub(super) fn client_preferred_scale(surface: &WlSurface, output_scale: f64) -> f64 {
-        let client_scale = surface
-            .client()
-            .and_then(|client| {
-                client
-                    .get_data::<XWaylandClientData>()
-                    .map(|data| data.compositor_state.client_scale())
-            })
+        let client_scale = xwayland::surface_client_scale(surface)
             .unwrap_or(1.0)
             .max(f64::EPSILON);
         (output_scale / client_scale).max(1.0)
@@ -830,16 +826,17 @@ impl WaylandFrontend {
             let Some(surface) = self.window_root_surface(window) else {
                 continue;
             };
+            let Some(managed_window) = ManagedWindow::new(window) else {
+                continue;
+            };
+            let protocol_facts = managed_window.facts();
             let Some(stable_id) = self.surface_id(&surface) else {
-                let x11 = window.x11_surface();
                 warn!(
                     surface = ?surface.id(),
                     surface_alive = surface.is_alive(),
-                    backend = if x11.is_some() { "x11" } else { "wayland" },
-                    x11_window = ?x11.as_ref().map(|surface| surface.window_id()),
-                    x11_override_redirect = ?x11
-                        .as_ref()
-                        .map(|surface| surface.is_override_redirect()),
+                    backend = if protocol_facts.x11 { "x11" } else { "wayland" },
+                    x11_window = ?protocol_facts.protocol_window_id,
+                    x11_override_redirect = protocol_facts.override_redirect,
                     "omitting desktop window without a stable surface identifier"
                 );
                 // TODO: Make surface destruction and desktop-window eviction
@@ -870,27 +867,7 @@ impl WaylandFrontend {
             title.clear();
             app_id.clear();
             layers.clear();
-            let x11 = window.x11_surface();
-            if window.toplevel().is_some() {
-                with_states(&surface, |states| {
-                    let Some(attributes) = states.data_map.get::<XdgToplevelSurfaceData>() else {
-                        return;
-                    };
-                    let attributes = attributes
-                        .lock()
-                        .unwrap_or_else(|poisoned| poisoned.into_inner());
-                    if let Some(value) = &attributes.title {
-                        title.push_str(value);
-                    }
-                    if let Some(value) = &attributes.app_id {
-                        app_id.push_str(value);
-                    }
-                });
-            } else if let Some(x11) = x11.as_ref() {
-                // Smithay exposes these X11 properties as owned strings.
-                title = x11.title();
-                app_id = x11.class();
-            }
+            managed_window.write_metadata(&mut title, &mut app_id);
             let mut composition_order = 0;
             // Flutter does not sample a texture after its window leaves the
             // visible scene (for example, once a minimize animation reaches
@@ -996,8 +973,9 @@ impl WaylandFrontend {
                 fallback_height
             };
             let minimized = self.surface_is_minimized(&surface.id());
+            let transient_parent_id = self.transient_parent_stable_id(&window);
             if !minimized
-                && let Some(parent_id) = self.transient_parent_stable_id(&window)
+                && let Some(parent_id) = transient_parent_id
                 && let Some(parent_location) = self.workspace_location(parent_id)
             {
                 self.window_registry
@@ -1024,13 +1002,9 @@ impl WaylandFrontend {
                 .and_then(|output| i64::try_from(output.0).ok())
                 .unwrap_or(-1);
             let presentation = self.managed_window_presentation(window);
-            let suppress_animations = x11
-                .as_ref()
-                .is_some_and(|_| !presentation.server_side_decorated);
+            let suppress_animations = protocol_facts.x11 && !presentation.server_side_decorated;
             let server_side_decorated = presentation.server_side_decorated;
-            let window_opacity = x11
-                .as_ref()
-                .map_or(1.0, |x11| xwayland::x11_window_opacity(x11));
+            let window_opacity = protocol_facts.opacity;
             if window_opacity < 1.0 {
                 for layer in &mut layers {
                     layer.opacity *= window_opacity;
@@ -1100,6 +1074,7 @@ impl WaylandFrontend {
                 geometry_height: f64::from(geometry.size.h),
                 monitor_id,
                 workspace_id,
+                transient_parent_id: transient_parent_id.unwrap_or(0),
                 minimized,
                 fullscreen: presentation.fullscreen,
                 maximized: presentation.maximized,
@@ -1118,10 +1093,7 @@ impl WaylandFrontend {
                     opacity * window_opacity
                 },
                 surfaces: layers,
-                content_kind: client_surface_content_kind(
-                    x11.as_ref()
-                        .is_some_and(|surface| surface.is_override_redirect()),
-                ),
+                content_kind: client_surface_content_kind(protocol_facts.override_redirect),
                 opacity_class,
             };
             if let Some(previous) = windows.get_mut(window_count) {
@@ -1212,6 +1184,7 @@ impl WaylandFrontend {
                 geometry_height: local_window.geometry.height,
                 monitor_id,
                 workspace_id,
+                transient_parent_id: 0,
                 minimized,
                 fullscreen: false,
                 maximized: false,
@@ -1394,6 +1367,7 @@ impl WaylandFrontend {
                     geometry_height: f64::from(layer_geometry.size.h),
                     monitor_id: i64::try_from(output.id.0).unwrap_or(-1),
                     workspace_id: -1,
+                    transient_parent_id: 0,
                     minimized: false,
                     fullscreen: false,
                     maximized: false,
@@ -1537,6 +1511,7 @@ impl WaylandFrontend {
                     geometry_height: f64::from(geometry.size.h),
                     monitor_id,
                     workspace_id: 1,
+                    transient_parent_id: 0,
                     minimized: false,
                     fullscreen: false,
                     maximized: false,

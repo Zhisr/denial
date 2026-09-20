@@ -72,7 +72,7 @@ impl FlutterRuntime {
 
     pub fn drain_xembed_tray_commands(
         &mut self,
-    ) -> impl Iterator<Item = crate::xembed_tray::XEmbedTrayCommand> + '_ {
+    ) -> impl Iterator<Item = crate::xembed_tray_protocol::XEmbedTrayCommand> + '_ {
         self.wire.drain_xembed_tray_commands()
     }
 
@@ -323,7 +323,7 @@ impl FlutterRuntime {
 
     pub fn send_xembed_tray_event(
         &mut self,
-        event: &crate::xembed_tray::XEmbedTrayEvent,
+        event: &crate::xembed_tray_protocol::XEmbedTrayEvent,
     ) -> Result<(), Box<dyn Error>> {
         let engine = self
             .host

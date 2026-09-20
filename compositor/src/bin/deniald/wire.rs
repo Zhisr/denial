@@ -24,7 +24,7 @@ use super::options::{
     WorkAreaOptions,
 };
 use super::settings::{KeyboardLayout, KeyboardSettings, MouseSettings, TouchpadSettings};
-use super::xembed_tray::{
+use super::xembed_tray_protocol::{
     XEmbedTrayAction, XEmbedTrayCommand, XEmbedTrayEvent, XEmbedTrayEventKind,
 };
 
@@ -586,6 +586,7 @@ pub struct WindowDescription {
     pub geometry_height: f64,
     pub monitor_id: i64,
     pub workspace_id: i64,
+    pub transient_parent_id: u64,
     pub minimized: bool,
     pub fullscreen: bool,
     pub maximized: bool,

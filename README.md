@@ -42,7 +42,7 @@ https://github.com/user-attachments/assets/2c7335bb-7363-46b1-8e3a-0d98c36c64b1
 - Settings for layouts, displays, input, shortcuts, and appearance.
   It's a desktop. You should be able to configure it with a mouse.
 - [Live shell editing and hot reload](#edit-the-shell).
-- Wayland and X11 apps (through Xwayland), multiple monitors, screenshots,
+- Wayland apps, optional X11 support through Xwayland, multiple monitors, screenshots,
   and screen sharing.
 
 Hyprland and niri users are welcome. We won't tell.

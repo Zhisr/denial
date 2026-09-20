@@ -1,15 +1,24 @@
+#[cfg(any(test, feature = "xwayland"))]
 use std::collections::BTreeSet;
 use std::error::Error;
 use std::ffi::OsStr;
+#[cfg(feature = "xwayland")]
 use std::io;
 
+#[cfg(feature = "xwayland")]
 use x11rb::NONE;
+#[cfg(feature = "xwayland")]
 use x11rb::connection::Connection;
+#[cfg(feature = "xwayland")]
 use x11rb::protocol::xproto::{AtomEnum, ConnectionExt as _};
 
+#[cfg(feature = "xwayland")]
 const XIM_SERVERS_PROPERTY: &[u8] = b"XIM_SERVERS";
+#[cfg(any(test, feature = "xwayland"))]
 const XIM_SERVER_PREFIX: &[u8] = b"@server=";
+#[cfg(feature = "xwayland")]
 const MAX_XIM_SERVERS: u32 = 64;
+#[cfg(any(test, feature = "xwayland"))]
 const MAX_XIM_SERVER_NAME_BYTES: usize = 256;
 
 /// Discover the unambiguous live XIM server registered with Xwayland.
@@ -17,6 +26,7 @@ const MAX_XIM_SERVER_NAME_BYTES: usize = 256;
 /// XIM servers append a selection atom named `@server=NAME` to the root
 /// `XIM_SERVERS` property. The property may retain stale entries, so ownership
 /// of every advertised selection is checked before deriving `@im=NAME`.
+#[cfg(feature = "xwayland")]
 pub(crate) fn discover_xim_modifier(
     display_name: &OsStr,
 ) -> Result<Option<String>, Box<dyn Error>> {
@@ -60,6 +70,14 @@ pub(crate) fn discover_xim_modifier(
     ))
 }
 
+#[cfg(not(feature = "xwayland"))]
+pub(crate) fn discover_xim_modifier(
+    _display_name: &OsStr,
+) -> Result<Option<String>, Box<dyn Error>> {
+    Ok(None)
+}
+
+#[cfg(any(test, feature = "xwayland"))]
 fn select_xim_modifier<'a>(
     registrations: impl IntoIterator<Item = (&'a [u8], bool)>,
 ) -> Option<String> {
@@ -72,6 +90,7 @@ fn select_xim_modifier<'a>(
         .flatten()
 }
 
+#[cfg(any(test, feature = "xwayland"))]
 fn modifier_from_server_atom(atom_name: &[u8]) -> Option<String> {
     let server = atom_name.strip_prefix(XIM_SERVER_PREFIX)?;
     if server.is_empty()

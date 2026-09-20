@@ -117,6 +117,7 @@ pub(super) fn restore_application() -> io::Result<()> {
     }
 }
 
+#[cfg(feature = "xwayland")]
 pub(super) fn with_application_affinity<T>(
     launch: impl FnOnce() -> io::Result<T>,
 ) -> io::Result<T> {

@@ -258,6 +258,7 @@ pub(super) fn run(options: Options) -> Result<(), Box<dyn Error>> {
             session.clone(),
             &seat_name,
             drm_fd.clone(),
+            options.xwayland,
             options.work_area.clone(),
             settings
                 .take()
@@ -586,7 +587,9 @@ pub(super) fn run(options: Options) -> Result<(), Box<dyn Error>> {
             wayland
                 .as_ref()
                 .map(|frontend| frontend.socket_name().to_os_string()),
-            wayland.as_ref().map(|frontend| frontend.xdisplay_name()),
+            wayland
+                .as_ref()
+                .and_then(|frontend| frontend.xdisplay_name()),
             output_control
                 .as_ref()
                 .map(OutputControlServer::socket_path_os_string),
@@ -637,7 +640,7 @@ pub(super) fn run(options: Options) -> Result<(), Box<dyn Error>> {
         if let Some(frontend) = wayland.as_ref() {
             match publish_session_activation_environment(
                 frontend.socket_name(),
-                frontend.xdisplay_name().as_os_str(),
+                frontend.xdisplay_name().as_deref(),
                 #[cfg(feature = "flutter")]
                 output_control
                     .as_ref()

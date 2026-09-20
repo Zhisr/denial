@@ -921,6 +921,7 @@ impl WaylandFrontend {
         let placements = self.current_layout_placements();
 
         let mut changed = minimum_sizes_changed || ownership_changed;
+        let mut changed_parents = Vec::new();
         for LayoutPlacement {
             window: window_id,
             geometry: frame,
@@ -957,7 +958,13 @@ impl WaylandFrontend {
                 target,
                 WindowGeometryAuthority::Layout,
             );
-            changed |= previous != target;
+            if previous != target {
+                changed = true;
+                changed_parents.push(window);
+            }
+        }
+        for parent in changed_parents {
+            changed |= self.reconcile_xdg_transient_descendant_placements(&parent);
         }
         changed
     }
@@ -1117,6 +1124,7 @@ impl WaylandFrontend {
         let Some(facts) = ManagedWindow::new(window).map(|window| window.facts()) else {
             return false;
         };
+        let already_managed = self.window_layout.contains(&root.id());
         LayoutWindowProperties {
             alive: root.is_alive(),
             transient: self.window_has_transient_parent(window),
@@ -1124,8 +1132,9 @@ impl WaylandFrontend {
             override_redirect: facts.override_redirect,
             minimized,
             pinned,
+            rigid_size: has_rigid_dimension(facts.minimum_size, facts.maximum_size),
         }
-        .is_tiling_candidate()
+        .is_tiling_candidate(already_managed)
     }
 
     pub(crate) fn window_size_constraints(
@@ -1349,17 +1358,27 @@ struct LayoutWindowProperties {
     override_redirect: bool,
     minimized: bool,
     pinned: bool,
+    rigid_size: bool,
 }
 
 impl LayoutWindowProperties {
-    fn is_tiling_candidate(self) -> bool {
+    fn is_tiling_candidate(self, already_managed: bool) -> bool {
         self.alive
             && !self.transient
             && !self.auxiliary
             && !self.override_redirect
             && !self.minimized
             && !self.pinned
+            // Dialogs commonly advertise rigid constraints before their first
+            // layout enrollment. Once a regular toplevel owns a leaf, later
+            // hint churn must not let it escape and re-enter the tree.
+            && (!self.rigid_size || already_managed)
     }
+}
+
+fn has_rigid_dimension(minimum: Size<i32, Logical>, maximum: Size<i32, Logical>) -> bool {
+    let rigid = |minimum: i32, maximum: i32| minimum > 0 && maximum > 0 && maximum <= minimum;
+    rigid(minimum.w, maximum.w) || rigid(minimum.h, maximum.h)
 }
 
 fn layout_drop_distance(geometry: Rectangle<i32, Logical>, location: Point<i32, Logical>) -> f64 {
@@ -1638,7 +1657,7 @@ mod tests {
     }
 
     #[test]
-    fn every_regular_toplevel_uses_the_managed_layout_path() {
+    fn only_regular_resizable_toplevels_enter_managed_layouts() {
         let regular = LayoutWindowProperties {
             alive: true,
             transient: false,
@@ -1646,28 +1665,56 @@ mod tests {
             override_redirect: false,
             minimized: false,
             pinned: false,
+            rigid_size: false,
         };
-        assert!(regular.is_tiling_candidate());
+        assert!(regular.is_tiling_candidate(false));
+        assert!(
+            !LayoutWindowProperties {
+                rigid_size: true,
+                ..regular
+            }
+            .is_tiling_candidate(false)
+        );
+        assert!(
+            LayoutWindowProperties {
+                rigid_size: true,
+                ..regular
+            }
+            .is_tiling_candidate(true)
+        );
         assert!(
             !LayoutWindowProperties {
                 auxiliary: true,
                 ..regular
             }
-            .is_tiling_candidate()
+            .is_tiling_candidate(false)
         );
         assert!(
             !LayoutWindowProperties {
                 transient: true,
                 ..regular
             }
-            .is_tiling_candidate()
+            .is_tiling_candidate(false)
         );
         assert!(
             !LayoutWindowProperties {
                 pinned: true,
                 ..regular
             }
-            .is_tiling_candidate()
+            .is_tiling_candidate(false)
         );
+
+        assert!(has_rigid_dimension(
+            Size::from((420, 300)),
+            Size::from((420, 300))
+        ));
+        assert!(has_rigid_dimension(
+            Size::from((420, 0)),
+            Size::from((400, 0))
+        ));
+        assert!(!has_rigid_dimension(
+            Size::from((320, 200)),
+            Size::from((0, 1200))
+        ));
     }
 }

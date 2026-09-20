@@ -732,8 +732,8 @@ impl CompositorHandler for RuntimeState {
     }
 
     fn client_compositor_state<'a>(&self, client: &'a Client) -> &'a CompositorClientState {
-        if let Some(state) = client.get_data::<XWaylandClientData>() {
-            return &state.compositor_state;
+        if let Some(state) = xwayland::client_compositor_state(client) {
+            return state;
         }
         &client
             .get_data::<DenialClientState>()
@@ -770,9 +770,7 @@ impl CompositorHandler for RuntimeState {
             );
             return;
         }
-        if client.get_data::<DenialClientState>().is_none()
-            && client.get_data::<XWaylandClientData>().is_none()
-        {
+        if client.get_data::<DenialClientState>().is_none() && !xwayland::is_client(&client) {
             warn!(client_id = ?client.id(), "disconnecting client with unknown Wayland state");
             client.kill(
                 &display_handle,
@@ -1281,13 +1279,9 @@ impl SeatHandler for RuntimeState {
         let focused_surface = focused
             .and_then(WaylandFocus::wl_surface)
             .map(|surface| surface.into_owned());
-        let focus_kind = match focused {
-            Some(KeyboardFocusTarget::Wayland(_)) => super::SeatFocusKind::Wayland,
-            Some(KeyboardFocusTarget::X11(_)) => super::SeatFocusKind::Xwayland,
-            #[cfg(feature = "flutter")]
-            Some(KeyboardFocusTarget::Flutter) => super::SeatFocusKind::None,
-            None => super::SeatFocusKind::None,
-        };
+        let focus_kind = focused
+            .map(KeyboardFocusTarget::seat_focus_kind)
+            .unwrap_or(super::SeatFocusKind::None);
         let input_method_changed = {
             let frontend = self.wayland.as_mut().expect("missing Wayland frontend");
             frontend.text_input.set_keyboard_focus(
@@ -1386,13 +1380,12 @@ impl SelectionHandler for RuntimeState {
             .map(SelectionSource::mime_types)
             .unwrap_or_default();
         clipboard_io::observe_selection(self, clipboard_io::CaptureOwner::Wayland, &mime_types);
-        if let Some(xwm) = self
+        if let Err(error) = self
             .wayland
             .as_mut()
             .expect("missing Wayland frontend")
-            .xwm
-            .as_mut()
-            && let Err(error) = xwm.new_selection(selection, source.map(|_| mime_types))
+            .xwayland
+            .publish_selection(selection, source.map(|_| mime_types))
         {
             warn!(%error, "could not publish Wayland clipboard to Xwayland");
         }
@@ -1417,13 +1410,12 @@ impl SelectionHandler for RuntimeState {
             clipboard_io::send_retained_selection(self, item_id, &mime_type, fd);
             return;
         }
-        if let Some(xwm) = self
+        if let Err(error) = self
             .wayland
             .as_mut()
             .expect("missing Wayland frontend")
-            .xwm
-            .as_mut()
-            && let Err(error) = xwm.send_selection(selection, mime_type, fd)
+            .xwayland
+            .send_selection(selection, mime_type, fd)
         {
             warn!(%error, "could not transfer Xwayland clipboard data to Wayland");
         }
@@ -1544,6 +1536,14 @@ impl XdgShellHandler for RuntimeState {
         let wl_surface = surface.wl_surface().clone();
         let _ = frontend.popups.track_popup(PopupKind::Xdg(surface));
         frontend.update_surface_fractional_scale(&wl_surface);
+        self.scene_sync.mark_dirty();
+    }
+
+    fn parent_changed(&mut self, surface: ToplevelSurface) {
+        let frontend = self.wayland.as_mut().expect("missing Wayland frontend");
+        if let Some(window) = frontend.window_for_root_surface(surface.wl_surface()) {
+            frontend.reconcile_xdg_parent_change(&window);
+        }
         self.scene_sync.mark_dirty();
     }
 
@@ -1980,6 +1980,16 @@ impl XdgActivationHandler for RuntimeState {
         if activate_window(self, &window, SERIAL_COUNTER.next_serial()) {
             debug!(app_id = ?data.app_id, "honored XDG activation request");
         }
+    }
+}
+
+impl XdgForeignHandler for RuntimeState {
+    fn xdg_foreign_state(&mut self) -> &mut XdgForeignState {
+        &mut self
+            .wayland
+            .as_mut()
+            .expect("XDG foreign dispatched without Wayland frontend")
+            .xdg_foreign_state
     }
 }
 

@@ -704,6 +704,17 @@ mod tests {
     }
 
     #[test]
+    fn transient_geometry_follows_parent_resize() {
+        let output = Rectangle::new((0, 0).into(), (1920, 1080).into());
+        let resized_parent = Rectangle::new((100, 50).into(), (1200, 800).into());
+
+        assert_eq!(
+            centered_transient_geometry((300, 200).into(), resized_parent, output),
+            Rectangle::new((550, 350).into(), (300, 200).into()),
+        );
+    }
+
+    #[test]
     fn transient_geometry_stays_on_parent_output() {
         let output = Rectangle::new((0, 0).into(), (1920, 1080).into());
         let parent = Rectangle::new((1800, 900).into(), (400, 300).into());

@@ -443,6 +443,7 @@ impl ClientInputRoute {
 
 #[cfg(feature = "flutter")]
 impl WaylandFrontend {
+    #[cfg(feature = "xwayland")]
     pub(super) fn invalidate_window_input_routes(&mut self, window: &smithay::desktop::Window) {
         if self
             .client_input_route_cache

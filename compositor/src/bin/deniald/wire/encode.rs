@@ -537,6 +537,7 @@ fn create_window_snapshot<'a>(
                 geometry_height: description.geometry_height,
                 monitor_id: description.monitor_id,
                 workspace_id: description.workspace_id,
+                transient_parent_id: description.transient_parent_id,
                 minimized: description.minimized,
                 fullscreen: description.fullscreen,
                 maximized: description.maximized,

@@ -1427,6 +1427,9 @@ class DenialWireCodec {
           geometryHeight: window.geometryHeight,
           monitorId: window.monitorId,
           workspaceId: window.workspaceId,
+          transientParentObjectId: window.transientParentId == 0
+              ? null
+              : window.transientParentId,
           minimized: window.minimized,
           fullscreen: window.fullscreen,
           maximized: window.maximized,
