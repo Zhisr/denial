@@ -9,6 +9,13 @@ Add Denial to the flake that owns the NixOS system:
 
 ```nix
 {
+  nixConfig = {
+    extra-substituters = [ "https://denial.cachix.org" ];
+    extra-trusted-public-keys = [
+      "denial.cachix.org-1:wd8YTnvPmugFrtdMJWtR1XdVknR3/g2nmBJkT+vAruo="
+    ];
+  };
+
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
     denial.url = "github:denialwm/denial";
@@ -86,11 +93,18 @@ source and therefore follows later system rebuilds.
 
 ## Build resources and lock maintenance
 
-There is currently no public Denial binary cache. A first installation builds
-the pinned Flutter engine and has required more than 48 GiB of temporary Nix
-store space on the validation host; plan a builder with at least 64 GiB of free
-working space. Subsequent builds reuse Nix store objects; source filtering
-keeps the engine and unrelated Flutter applications from rebuilding.
+Trusted `dev` and `main` validation builds publish Denial's Nix outputs to the
+public `denial.cachix.org` cache. The top-level example repeats the cache URL
+and signing key because Nix does not apply the `nixConfig` of a flake used only
+as an input. Direct commands against the Denial flake can accept its identical
+checked-in configuration with `--accept-flake-config`.
+
+An exact cache hit downloads the package instead of compiling the pinned
+Flutter engine. A cache miss still performs the complete source build and has
+required more than 48 GiB of temporary Nix store space on the validation host;
+plan a builder with at least 64 GiB of free working space. Subsequent builds
+reuse Nix store objects, and source filtering keeps the engine and unrelated
+Flutter applications from rebuilding.
 
 The following checked-in locks make source changes explicit:
 

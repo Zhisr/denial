@@ -62,12 +62,12 @@ engine.
 
 ## Resource and closure measurements
 
-There is no public Denial binary cache yet. The first system build exhausted
-the test host's 48 GiB thin root volume while materializing the engine source,
-build, and system closures. Its existing NixOS logical volume was extended
-online to 64 GiB. This is why the installation guide explicitly recommends at
-least 64 GiB of free builder working space instead of describing the build
-only as “substantial.”
+This 2026-09-18 validation predated the public Denial Cachix integration, so
+its first system build exhausted the test host's 48 GiB thin root volume while
+materializing the engine source, build, and system closures. Its existing
+NixOS logical volume was extended online to 64 GiB. This is why the
+installation guide still recommends at least 64 GiB of free builder working
+space for a cache miss instead of describing the build only as “substantial.”
 
 The composed package occupies approximately 105 MiB itself. Replacing the
 Settings engine library's synthetic toolchain RUNPATH with direct runtime

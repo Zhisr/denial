@@ -1,6 +1,16 @@
 {
   description = "Denial, a Flutter-native Wayland compositor";
 
+  # Flake schema requires this to be a literal set. The lock consistency check
+  # keeps these values aligned with nix/cachix-cache.json, which is consumed by
+  # the runner installer and CI upload.
+  nixConfig = {
+    extra-substituters = [ "https://denial.cachix.org" ];
+    extra-trusted-public-keys = [
+      "denial.cachix.org-1:wd8YTnvPmugFrtdMJWtR1XdVknR3/g2nmBJkT+vAruo="
+    ];
+  };
+
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
 
   outputs =

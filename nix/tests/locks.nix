@@ -50,6 +50,20 @@ runCommand "denial-nix-lock-consistency"
         ] | all(. != $fake and test("^sha256-[A-Za-z0-9+/]{43}=$")))' \
       ${source}/nix/flutter-engine-lock.json >/dev/null
 
+    jq -e '
+      .schema_version == 1
+      and .name == "denial"
+      and .uri == "https://denial.cachix.org"
+      and .public_key ==
+        "denial.cachix.org-1:wd8YTnvPmugFrtdMJWtR1XdVknR3/g2nmBJkT+vAruo="
+    ' ${source}/nix/cachix-cache.json >/dev/null
+    grep --fixed-strings \
+      'extra-substituters = [ "https://denial.cachix.org" ];' \
+      ${source}/flake.nix >/dev/null
+    grep --fixed-strings \
+      '"denial.cachix.org-1:wd8YTnvPmugFrtdMJWtR1XdVknR3/g2nmBJkT+vAruo="' \
+      ${source}/flake.nix >/dev/null
+
     check_pub_lock \
       ${source}/dart_shell/pubspec.lock \
       ${source}/nix/dart_shell-pubspec-lock.json

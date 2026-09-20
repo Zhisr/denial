@@ -37,6 +37,7 @@ jobs:
       - name: Install Nix
         uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
         with:
+          extra_nix_config: accept-flake-config = true
           github_access_token: ${{ github.token }}
 
       - name: Evaluate all flake outputs
@@ -194,6 +195,52 @@ jobs:
             2>&1 | tee "$EVIDENCE_ROOT/source-audit.txt"
           tools/denial-release doctor --ci --branch "$VALIDATION_BRANCH" \
             2>&1 | tee "$EVIDENCE_ROOT/builder-doctor.txt"
+
+      - name: Require Cachix write credential
+        shell: bash
+        env:
+          CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$CACHIX_AUTH_TOKEN" ]]; then
+            printf '%s\n' \
+              'CACHIX_AUTH_TOKEN must be a repository Actions secret.' >&2
+            exit 1
+          fi
+
+      - name: Build cacheable Nix package and checks
+        id: nix_cache_build
+        shell: bash
+        run: |
+          set -euo pipefail
+          cache_name="$(jq -er '.name' nix/cachix-cache.json)"
+          mapfile -t nix_paths < <(
+            nix build \
+              .#denial \
+              .#denial-flutter \
+              .#checks.x86_64-linux.locks \
+              .#checks.x86_64-linux.module \
+              .#checks.x86_64-linux.path-contract \
+              --accept-flake-config \
+              --cores 16 \
+              --out-link "$RUNNER_TEMP/denial-nix-cache" \
+              --print-build-logs \
+              --print-out-paths \
+              2> >(tee "$EVIDENCE_ROOT/nix-build.txt" >&2)
+          )
+          ((${#nix_paths[@]} == 5))
+          for path in "${nix_paths[@]}"; do
+            [[ "$path" == /nix/store/* ]]
+          done
+          printf '%s\n' "${nix_paths[@]}" \
+            | sort --unique \
+            | tee "$EVIDENCE_ROOT/nix-cache-paths.txt"
+          {
+            printf 'cache_name=%s\n' "$cache_name"
+            printf 'paths<<DENIAL_NIX_PATHS\n'
+            cat "$EVIDENCE_ROOT/nix-cache-paths.txt"
+            printf 'DENIAL_NIX_PATHS\n'
+          } >>"$GITHUB_OUTPUT"
 
       - name: Bootstrap pinned development toolchains
         shell: bash
@@ -462,6 +509,14 @@ jobs:
           if-no-files-found: error
           retention-days: ${{ github.ref == 'refs/heads/main' && 90 || 7 }}
           compression-level: 0
+
+      - name: Publish Nix closures to Cachix
+        uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
+        with:
+          name: ${{ steps.nix_cache_build.outputs.cache_name }}
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          pathsToPush: ${{ steps.nix_cache_build.outputs.paths }}
+          skipAddingSubstituter: true
 
   verify:
     name: Independently verify candidate artifact
