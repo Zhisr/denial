@@ -108,33 +108,52 @@ pub(super) struct GammaApplyOutcome {
 }
 
 impl GammaController {
-    pub(super) fn reconcile(
+    fn topology_matches<I>(&self, scanouts: I) -> bool
+    where
+        I: ExactSizeIterator<Item = (OutputId, crtc::Handle)>,
+    {
+        self.outputs.len() + self.unsupported.len() == scanouts.len()
+            && scanouts.into_iter().all(|(output, crtc)| {
+                self.outputs
+                    .get(&output)
+                    .is_some_and(|state| state.crtc == crtc)
+                    || self
+                        .unsupported
+                        .get(&output)
+                        .is_some_and(|known| *known == crtc)
+            })
+    }
+
+    pub(super) fn reconcile_if_needed(
         &mut self,
         drm: &DrmDevice,
         scanouts: &[Scanout],
         force_reapply: bool,
-    ) -> BTreeMap<OutputId, u32> {
-        let active = scanouts
-            .iter()
-            .map(|scanout| scanout.output.id)
-            .collect::<BTreeSet<_>>();
-        self.unsupported.retain(|output, _| active.contains(output));
+    ) -> Option<BTreeMap<OutputId, u32>> {
+        if !force_reapply
+            && self.topology_matches(
+                scanouts
+                    .iter()
+                    .map(|scanout| (scanout.output.id, scanout.output.crtc)),
+            )
+        {
+            return None;
+        }
+
+        self.unsupported
+            .retain(|output, _| scanouts.iter().any(|scanout| scanout.output.id == *output));
         if force_reapply {
             self.unsupported.clear();
         }
-        let removed = self
-            .outputs
-            .keys()
-            .copied()
-            .filter(|output| !active.contains(output))
-            .collect::<Vec<_>>();
-        for output in removed {
-            if let Some(mut state) = self.outputs.remove(&output)
-                && let Err(error) = restore_output(drm, &mut state)
-            {
+        self.outputs.retain(|output, state| {
+            if scanouts.iter().any(|scanout| scanout.output.id == *output) {
+                return true;
+            }
+            if let Err(error) = restore_output(drm, state) {
                 warn!(?output, %error, "could not restore gamma for a removed output");
             }
-        }
+            false
+        });
 
         for scanout in scanouts {
             let output = scanout.output.id;
@@ -183,10 +202,12 @@ impl GammaController {
             }
         }
 
-        self.outputs
-            .iter()
-            .map(|(output, state)| (*output, state.size))
-            .collect()
+        Some(
+            self.outputs
+                .iter()
+                .map(|(output, state)| (*output, state.size))
+                .collect(),
+        )
     }
 
     pub(super) fn apply(
@@ -210,35 +231,23 @@ impl GammaController {
             }
         }
 
-        let dirty = self
-            .outputs
-            .iter()
-            .filter_map(|(output, state)| state.dirty.then_some(*output))
-            .collect::<Vec<_>>();
         let mut outcome = GammaApplyOutcome::default();
-        for output in dirty {
-            let level = self.internal_level(output);
-            let had_external = self
-                .outputs
+        let (outputs, internal_levels) = (&mut self.outputs, &self.internal_levels);
+        for (&output, state) in outputs.iter_mut().filter(|(_, state)| state.dirty) {
+            let level = internal_levels
                 .get(&output)
-                .is_some_and(|state| state.external_ramp.is_some());
-            let result = self
-                .outputs
-                .get_mut(&output)
-                .ok_or_else(|| "gamma output disappeared".to_owned())
-                .and_then(|state| apply_output(drm, state, level));
-            if let Err(error) = result {
+                .copied()
+                .unwrap_or(1.0)
+                .clamp(0.0, 1.0);
+            let had_external = state.external_ramp.is_some();
+            if let Err(error) = apply_output(drm, state, level) {
                 warn!(?output, %error, "could not apply DRM gamma LUT");
                 outcome.failed_outputs.insert(output);
                 if had_external {
                     outcome.failed_external.push(output);
-                    if let Some(state) = self.outputs.get_mut(&output) {
-                        state.external_ramp = None;
-                        state.dirty = true;
-                    }
-                    if let Some(state) = self.outputs.get_mut(&output)
-                        && let Err(reset_error) = apply_output(drm, state, level)
-                    {
+                    state.external_ramp = None;
+                    state.dirty = true;
+                    if let Err(reset_error) = apply_output(drm, state, level) {
                         warn!(?output, %reset_error, "could not restore the internal gamma layer after a client failure");
                     }
                 }
@@ -299,9 +308,9 @@ pub(super) fn synchronize_gamma_control(
             .gamma_control
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        controller.reconcile(drm, scanouts, force_reapply)
+        controller.reconcile_if_needed(drm, scanouts, force_reapply)
     };
-    if let Some(frontend) = events.wayland.as_mut() {
+    if let (Some(frontend), Some(capabilities)) = (events.wayland.as_mut(), capabilities) {
         frontend.set_gamma_capabilities(capabilities);
     }
     let external_changes = events
@@ -447,20 +456,19 @@ fn apply_output(drm: &DrmDevice, state: &mut OutputGamma, level: f64) -> Result<
     let expected = size
         .checked_mul(3)
         .ok_or_else(|| "gamma ramp length overflow".to_owned())?;
-    let base = match state.external_ramp.as_deref() {
-        Some(ramp) if ramp.len() == expected => ramp.to_vec(),
+    let mut bytes = match state.external_ramp.as_deref() {
+        Some(ramp) if ramp.len() == expected => compose_drm_lut(ramp, size, level),
         Some(ramp) => {
             return Err(format!(
                 "gamma ramp has {} entries, expected {expected}",
                 ramp.len()
             ));
         }
-        None => state
-            .original_ramp
-            .clone()
-            .unwrap_or_else(|| linear_ramp(state.size)),
+        None => match state.original_ramp.as_deref() {
+            Some(ramp) => compose_drm_lut(ramp, size, level),
+            None => compose_drm_lut(&linear_ramp(state.size), size, level),
+        },
     };
-    let mut bytes = compose_drm_lut(&base, size, level);
     let blob = drm_ffi::mode::create_property_blob(drm.as_fd(), &mut bytes)
         .map_err(|error| format!("creating GAMMA_LUT blob failed: {error}"))?;
     let blob = u64::from(blob.blob_id);
@@ -533,6 +541,46 @@ fn restore_output(drm: &DrmDevice, state: &mut OutputGamma) -> Result<(), String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn topology_match_requires_the_same_outputs_and_crtcs() {
+        let first_crtc = from_u32(1).expect("nonzero CRTC handle");
+        let second_crtc = from_u32(2).expect("nonzero CRTC handle");
+        let changed_crtc = from_u32(3).expect("nonzero CRTC handle");
+        let mut controller = GammaController::default();
+        controller.outputs.insert(
+            OutputId(10),
+            OutputGamma {
+                crtc: first_crtc,
+                property: from_u32(4).expect("nonzero property handle"),
+                size: 256,
+                original_blob: 0,
+                original_ramp: None,
+                installed_blob: None,
+                external_ramp: None,
+                dirty: false,
+            },
+        );
+        controller.unsupported.insert(OutputId(20), second_crtc);
+
+        assert!(controller.topology_matches(
+            [(OutputId(20), second_crtc), (OutputId(10), first_crtc)].into_iter()
+        ));
+        assert!(!controller.topology_matches(
+            [(OutputId(10), changed_crtc), (OutputId(20), second_crtc)].into_iter()
+        ));
+        assert!(!controller.topology_matches([(OutputId(10), first_crtc)].into_iter()));
+        assert!(
+            !controller.topology_matches(
+                [
+                    (OutputId(10), first_crtc),
+                    (OutputId(20), second_crtc),
+                    (OutputId(30), changed_crtc),
+                ]
+                .into_iter()
+            )
+        );
+    }
 
     #[test]
     fn decodes_software_dimming_requests() {

@@ -260,10 +260,8 @@ impl WaylandFrontend {
         }
     }
 
-    pub(crate) fn take_gamma_changes(&mut self) -> Vec<(OutputId, Option<Vec<u16>>)> {
+    pub(crate) fn take_gamma_changes(&mut self) -> BTreeMap<OutputId, Option<Vec<u16>>> {
         std::mem::take(&mut self.gamma_control.pending)
-            .into_iter()
-            .collect()
     }
 
     pub(crate) fn gamma_control_failed(&mut self, output: OutputId) {

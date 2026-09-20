@@ -452,6 +452,38 @@ fn decode_cursor_presented(data: &[u8]) -> Option<u64> {
     (epoch > 0).then_some(epoch)
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum TextureOutputMembership {
+    One(OutputId),
+    Two([OutputId; 2]),
+    Many(Arc<[OutputId]>),
+}
+
+impl TextureOutputMembership {
+    fn from_outputs(mut outputs: impl Iterator<Item = OutputId>) -> Option<Self> {
+        let first = outputs.next()?;
+        let Some(second) = outputs.next() else {
+            return Some(Self::One(first));
+        };
+        let Some(third) = outputs.next() else {
+            return Some(Self::Two([first, second]));
+        };
+
+        let mut many = Vec::with_capacity(outputs.size_hint().0.saturating_add(3));
+        many.extend([first, second, third]);
+        many.extend(outputs);
+        Some(Self::Many(many.into()))
+    }
+
+    fn outputs(&self) -> &[OutputId] {
+        match self {
+            Self::One(output) => std::slice::from_ref(output),
+            Self::Two(outputs) => outputs,
+            Self::Many(outputs) => outputs,
+        }
+    }
+}
+
 pub struct FlutterRuntime {
     host: Option<EngineHost>,
     handler: Arc<FlutterGlHandler>,
@@ -485,7 +517,7 @@ pub struct FlutterRuntime {
     output_rotation_animation: Option<OutputRotationAnimation>,
     pending_output_geometry: Option<PendingOutputGeometry>,
     render_output_ffi_scratch: RenderOutputFfiScratch,
-    texture_output_membership: HashMap<i64, Arc<[OutputId]>>,
+    texture_output_membership: HashMap<i64, TextureOutputMembership>,
     pending_output_updates: BTreeMap<OutputId, BTreeSet<i64>>,
     changed_texture_scratch: Vec<i64>,
     render_view_scratch: Vec<i64>,

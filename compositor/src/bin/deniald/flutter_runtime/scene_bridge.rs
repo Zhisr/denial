@@ -11,8 +11,7 @@ impl FlutterRuntime {
         restored_window_ids: &BTreeSet<u64>,
     ) -> Result<SyncedWaylandScene, Box<dyn Error>> {
         self.rebuild_texture_output_membership(&windows);
-        let cursor_ids = self.cursor_texture_ids.clone();
-        self.install_cursor_texture_membership(&cursor_ids);
+        self.reinstall_cursor_texture_membership();
         let mut desired = mem::take(&mut self.scene_texture_ids);
         desired.clear();
         desired.reserve(frames.len());
