@@ -40,10 +40,11 @@ DENIAL_PC_XWAYLAND=0 tools/denial-pc build
 DENIAL_PC_XWAYLAND=0 tools/denial-pc session
 ```
 
-This selects the `flutter` Cargo feature without the independent `xwayland`
-feature, so Smithay's Xwayland implementation and `x11rb` are absent from the
-resolved build graph. A normal binary can instead disable only server startup
-for one invocation with `deniald --no-xwayland`.
+Xwayland is a default Cargo feature. The environment switch builds the
+compositor with `--no-default-features --features flutter`, so Smithay's
+Xwayland implementation and `x11rb` are absent from the resolved build graph.
+A normal binary can instead disable only server startup for one invocation
+with `deniald --no-xwayland`.
 
 Run only the lock-matched Flutter shell tests, optionally forwarding a test
 path or other `flutter test` arguments:

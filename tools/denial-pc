@@ -139,8 +139,9 @@ fi
 BUILD_JOBS="${DENIAL_BUILD_JOBS:-$DEFAULT_BUILD_JOBS}"
 PC_XWAYLAND="${DENIAL_PC_XWAYLAND:-1}"
 COMPOSITOR_FEATURES="flutter"
-if [[ "$PC_XWAYLAND" == 1 ]]; then
-    COMPOSITOR_FEATURES+=",xwayland"
+COMPOSITOR_DEFAULT_FEATURE_ARGS=()
+if [[ "$PC_XWAYLAND" == 0 ]]; then
+    COMPOSITOR_DEFAULT_FEATURE_ARGS=(--no-default-features)
 fi
 
 usage() {
@@ -734,6 +735,7 @@ build_compositor() {
         --locked \
         --release \
         --jobs "$BUILD_JOBS" \
+        "${COMPOSITOR_DEFAULT_FEATURE_ARGS[@]}" \
         --features "$COMPOSITOR_FEATURES" \
         --bin deniald \
         --bin denialctl
@@ -788,7 +790,7 @@ test_compositor() {
             --lib \
             --bins \
             --tests \
-            --features flutter,xwayland \
+            --features flutter \
             -- "${kernel_test_filters[@]}"
     )
     run_pinned_cargo test \

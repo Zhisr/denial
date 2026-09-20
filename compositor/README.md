@@ -21,9 +21,9 @@ before the first modeset and restored on normal exit.
 
 ```sh
 cargo test --manifest-path compositor/Cargo.toml --lib --bins --tests \
-  --features flutter,xwayland
+  --features flutter
 cargo clippy --manifest-path compositor/Cargo.toml --all-targets \
-  --features flutter,xwayland -- -D warnings
+  --features flutter -- -D warnings
 ```
 
 The optional Rust Flutter host compiles the committed, revision-stamped
@@ -71,15 +71,15 @@ session loop. It keeps running until the shell requests logout; the existing
 normal-exit path then restores the captured atomic KMS state:
 
 ```sh
-cargo build --release --features flutter,xwayland --manifest-path compositor/Cargo.toml \
+cargo build --release --features flutter --manifest-path compositor/Cargo.toml \
   --bin deniald --bin denialctl
 
 compositor/target/release/deniald \
   --wayland --flutter-bundle /path/to/denial/bundle
 ```
 
-The `flutter` feature includes `kms`; `xwayland` is independent and adds the
-Smithay XWM integration plus the optional `x11rb` tray and XIM support. A
+The `flutter` feature includes `kms`; `xwayland` is enabled by default and adds
+the Smithay XWM integration plus the optional `x11rb` tray and XIM support. A
 binary built with only `kms` cannot load the Flutter bundle. While that session is running,
 `compositor/target/release/denialctl status` inspects its output and Flutter UI
 state without depending on the shell.
@@ -87,8 +87,8 @@ state without depending on the shell.
 When built with the `xwayland` feature, the KMS compositor starts a rootless
 Xwayland server and exports its dynamic `DISPLAY` alongside `WAYLAND_DISPLAY`.
 Pass `--no-xwayland` to suppress that server for one session. A build with
-`--features flutter` and without `xwayland` contains neither Smithay's
-Xwayland feature nor the `x11rb` dependency and never publishes `DISPLAY`.
+`--no-default-features --features flutter` contains neither Smithay's Xwayland
+feature nor the `x11rb` dependency and never publishes `DISPLAY`.
 
 Denial remembers the last normal rectangle and maximized/fullscreen state of
 each application and restores them before that application's first frame is

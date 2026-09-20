@@ -12,7 +12,7 @@ members = ["denial-portal", "flutter-engine"]
 resolver = "3"
 
 [features]
-default = []
+default = ["xwayland"]
 flutter = [
     "kms",
     "control",
