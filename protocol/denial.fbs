@@ -420,6 +420,9 @@ table DisplayOutput {
   source_rect:WireRect;
   scale:double = 1.0;
   refresh_rate:double = 60.0;
+  // Rust-authoritative monitor-local workspace. Appended so older peers keep
+  // the historical workspace-1 default.
+  active_workspace:uint = 1;
 }
 
 table DisplayLayout {

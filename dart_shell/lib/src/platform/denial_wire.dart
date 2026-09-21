@@ -1521,6 +1521,8 @@ class DenialWireCodec {
           outputPixels.height <= 0.0 ||
           output.scale <= 0.0 ||
           output.refreshRate <= 0.0 ||
+          output.activeWorkspace < 1 ||
+          output.activeWorkspace > 9 ||
           output.monitorId < 0 ||
           !outputIds.add(output.monitorId)) {
         rejectedStructuredMessages += 1;
@@ -1534,6 +1536,7 @@ class DenialWireCodec {
           pixelSize: Size(outputPixels.width, outputPixels.height),
           scale: output.scale,
           refreshRate: output.refreshRate,
+          activeWorkspace: output.activeWorkspace,
         ),
       );
     }

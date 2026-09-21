@@ -3490,6 +3490,49 @@ mod tests {
     }
 
     #[test]
+    fn removing_another_outputs_scrolling_row_preserves_the_surviving_view() {
+        let mut layout = ScrollingLayout::<u64>::default();
+        let work_area = rect(0, 0, 1000, 600);
+        for window in 1..=3 {
+            layout.insert(LayoutInsertion {
+                window,
+                space: OUTPUT,
+                anchor: (window > 1).then_some(window - 1),
+            });
+            prepare_scrolling(&mut layout, work_area, 10, LayoutAxis::Horizontal);
+        }
+        assert!(layout.activate(&2));
+        assert!(layout.scroll_horizontally(OUTPUT, work_area, 10, LayoutAxis::Horizontal, -400.0,));
+        assert_eq!(
+            layout.finish_horizontal_scroll(
+                OUTPUT,
+                work_area,
+                10,
+                LayoutAxis::Horizontal,
+                false,
+                None,
+            ),
+            Some(3),
+        );
+        let surviving_before = layout.arrange(OUTPUT, work_area, 10);
+        let view_before = layout.rows[&OUTPUT].view_start;
+
+        for window in 10..=11 {
+            layout.insert(LayoutInsertion {
+                window,
+                space: SECOND_OUTPUT,
+                anchor: (window > 10).then_some(window - 1),
+            });
+            layout.prepare_arrange(SECOND_OUTPUT, work_area, 10, LayoutAxis::Horizontal);
+        }
+        assert!(layout.remove(&10));
+        assert!(layout.remove(&11));
+
+        assert_eq!(layout.arrange(OUTPUT, work_area, 10), surviving_before);
+        assert_eq!(layout.rows[&OUTPUT].view_start, view_before);
+    }
+
+    #[test]
     fn scrolling_flick_is_capped_to_one_column_despite_high_velocity() {
         let mut layout = ScrollingLayout::<u64>::default();
         let work_area = rect(0, 0, 1000, 600);

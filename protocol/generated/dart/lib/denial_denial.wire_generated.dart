@@ -2364,10 +2364,11 @@ class DisplayOutput {
   WireRect? get sourceRect => WireRect.reader.vTableGetNullable(_bc, _bcOffset, 12);
   double get scale => const fb.Float64Reader().vTableGet(_bc, _bcOffset, 14, 1.0);
   double get refreshRate => const fb.Float64Reader().vTableGet(_bc, _bcOffset, 16, 60.0);
+  int get activeWorkspace => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 18, 1);
 
   @override
   String toString() {
-    return 'DisplayOutput{monitorId: ${monitorId}, name: ${name}, logicalRect: ${logicalRect}, pixelSize: ${pixelSize}, sourceRect: ${sourceRect}, scale: ${scale}, refreshRate: ${refreshRate}}';
+    return 'DisplayOutput{monitorId: ${monitorId}, name: ${name}, logicalRect: ${logicalRect}, pixelSize: ${pixelSize}, sourceRect: ${sourceRect}, scale: ${scale}, refreshRate: ${refreshRate}, activeWorkspace: ${activeWorkspace}}';
   }
 }
 
@@ -2385,7 +2386,7 @@ class DisplayOutputBuilder {
   final fb.Builder fbBuilder;
 
   void begin() {
-    fbBuilder.startTable(7);
+    fbBuilder.startTable(8);
   }
 
   int addMonitorId(int? monitorId) {
@@ -2416,6 +2417,10 @@ class DisplayOutputBuilder {
     fbBuilder.addFloat64(6, refreshRate);
     return fbBuilder.offset;
   }
+  int addActiveWorkspace(int? activeWorkspace) {
+    fbBuilder.addUint32(7, activeWorkspace);
+    return fbBuilder.offset;
+  }
 
   int finish() {
     return fbBuilder.endTable();
@@ -2430,6 +2435,7 @@ class DisplayOutputObjectBuilder extends fb.ObjectBuilder {
   final WireRectObjectBuilder? _sourceRect;
   final double? _scale;
   final double? _refreshRate;
+  final int? _activeWorkspace;
 
   DisplayOutputObjectBuilder({
     int? monitorId,
@@ -2439,6 +2445,7 @@ class DisplayOutputObjectBuilder extends fb.ObjectBuilder {
     WireRectObjectBuilder? sourceRect,
     double? scale,
     double? refreshRate,
+    int? activeWorkspace,
   })
       : _monitorId = monitorId,
         _name = name,
@@ -2446,14 +2453,15 @@ class DisplayOutputObjectBuilder extends fb.ObjectBuilder {
         _pixelSize = pixelSize,
         _sourceRect = sourceRect,
         _scale = scale,
-        _refreshRate = refreshRate;
+        _refreshRate = refreshRate,
+        _activeWorkspace = activeWorkspace;
 
   /// Finish building, and store into the [fbBuilder].
   @override
   int finish(fb.Builder fbBuilder) {
     final int? nameOffset = _name == null ? null
         : fbBuilder.writeString(_name!);
-    fbBuilder.startTable(7);
+    fbBuilder.startTable(8);
     fbBuilder.addInt64(0, _monitorId);
     fbBuilder.addOffset(1, nameOffset);
     if (_logicalRect != null) {
@@ -2467,6 +2475,7 @@ class DisplayOutputObjectBuilder extends fb.ObjectBuilder {
     }
     fbBuilder.addFloat64(5, _scale);
     fbBuilder.addFloat64(6, _refreshRate);
+    fbBuilder.addUint32(7, _activeWorkspace);
     return fbBuilder.endTable();
   }
 

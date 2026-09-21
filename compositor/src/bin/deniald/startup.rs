@@ -260,6 +260,7 @@ pub(super) fn run(options: Options) -> Result<(), Box<dyn Error>> {
             drm_fd.clone(),
             options.xwayland,
             options.work_area.clone(),
+            output_configuration.scrolling_layout_axes.clone(),
             settings
                 .take()
                 .expect("Wayland settings were loaded before frontend startup"),

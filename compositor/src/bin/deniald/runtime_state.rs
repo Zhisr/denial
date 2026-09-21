@@ -77,6 +77,8 @@ pub(super) struct RuntimeState {
     #[cfg(feature = "flutter")]
     pub(super) restored_window_ids: BTreeSet<u64>,
     #[cfg(feature = "flutter")]
+    pub(super) replacement_flutter_rehydration_pending: bool,
+    #[cfg(feature = "flutter")]
     pub(super) notification_server: Option<NotificationServer>,
     #[cfg(feature = "flutter")]
     pub(super) portal_ipc: Option<portal_ipc::PortalIpcPublisher>,
@@ -166,6 +168,18 @@ impl RuntimeState {
         }
     }
 
+    pub(super) fn install_workspace_snapshot(
+        &self,
+        runtime: &mut flutter_runtime::FlutterRuntime,
+    ) -> Result<(), Box<dyn Error>> {
+        runtime.set_active_workspaces(
+            self.wayland
+                .as_ref()
+                .map(wayland_frontend::WaylandFrontend::workspace_state_snapshot)
+                .unwrap_or_default(),
+        )
+    }
+
     pub(super) fn request_screenshot_selection(&mut self, monitor_id: Option<i64>) {
         let output = monitor_id
             .and_then(|monitor_id| u64::try_from(monitor_id).ok())
@@ -213,16 +227,35 @@ impl RuntimeState {
         self.scene_sync.invalidate_runtime();
         self.pending_window_events.clear();
         self.pending_unpublished_window_events.clear();
-        if let Some(frontend) = self.wayland.as_ref() {
-            self.pending_window_events
-                .extend(frontend.replay_window_state_events());
-            frontend.xwayland.request_xembed_replay();
+        // The replacement engine can accept platform messages before its
+        // widget tree has subscribed to broadcast event streams. The first
+        // fresh InputLayout is the generation-ready acknowledgement: it is
+        // published after the shell and its event coordinators have mounted.
+        self.replacement_flutter_rehydration_pending = true;
+    }
+
+    pub(super) fn queue_replacement_flutter_rehydration_if_ready(
+        &mut self,
+        first_generation_layout: bool,
+    ) {
+        if !first_generation_layout
+            || !std::mem::take(&mut self.replacement_flutter_rehydration_pending)
+        {
+            return;
         }
-        let workspace_states = self
-            .wayland
-            .as_ref()
-            .map(wayland_frontend::WaylandFrontend::workspace_state_snapshot)
-            .unwrap_or_default();
+        let (window_focus, workspace_states) = self.wayland.as_ref().map_or_else(
+            || (None, Vec::new()),
+            |frontend| {
+                frontend.xwayland.request_xembed_replay();
+                (
+                    frontend.replay_window_focus_event(),
+                    frontend.workspace_state_snapshot(),
+                )
+            },
+        );
+        if let Some(window_focus) = window_focus {
+            self.pending_window_events.push(window_focus);
+        }
         for (monitor_id, workspace_id) in workspace_states {
             self.queue_workspace_action(monitor_id, workspace_id);
         }
@@ -261,5 +294,24 @@ impl RuntimeState {
         {
             true
         }
+    }
+}
+
+#[cfg(all(test, feature = "flutter"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn replacement_rehydration_waits_for_the_first_input_layout() {
+        let mut state = RuntimeState {
+            replacement_flutter_rehydration_pending: true,
+            ..RuntimeState::default()
+        };
+
+        state.queue_replacement_flutter_rehydration_if_ready(false);
+        assert!(state.replacement_flutter_rehydration_pending);
+
+        state.queue_replacement_flutter_rehydration_if_ready(true);
+        assert!(!state.replacement_flutter_rehydration_pending);
     }
 }

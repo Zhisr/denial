@@ -3438,6 +3438,18 @@ abstract class AppLocalizations {
   /// **'Monitor configuration'**
   String get settingsDisplayArrangementTitle;
 
+  /// Label for including a connected monitor in the desktop.
+  ///
+  /// In en, this message translates to:
+  /// **'Use this display'**
+  String get settingsDisplayEnabled;
+
+  /// Explanation shown below the monitor enable toggle.
+  ///
+  /// In en, this message translates to:
+  /// **'Include this monitor in the desktop. At least one display must remain enabled.'**
+  String get settingsDisplayEnabledDescription;
+
   /// English UI text for settingsDisplayBrightnessDescription.
   ///
   /// In en, this message translates to:
@@ -3506,7 +3518,7 @@ abstract class AppLocalizations {
   /// Explains the primary display selector and its automatic fallback.
   ///
   /// In en, this message translates to:
-  /// **'Shell surfaces open on the primary display. Automatic uses the connected display with the highest refresh rate.'**
+  /// **'Shell surfaces open on the primary display. Automatic uses the enabled display with the highest refresh rate.'**
   String get settingsDisplayPrimaryHint;
 
   /// Label for the monitor refresh-rate selector.
@@ -3550,6 +3562,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'90° clockwise'**
   String get settingsDisplayRotation270;
+
+  /// Label for choosing the scrolling window layout axis on one monitor.
+  ///
+  /// In en, this message translates to:
+  /// **'Scrolling layout axis'**
+  String get settingsDisplayScrollingLayoutAxis;
+
+  /// Explanation shown beside the per-monitor scrolling layout axis selector.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose how scrolling windows are arranged on this display.'**
+  String get settingsDisplayScrollingLayoutAxisDescription;
+
+  /// Choice that derives the scrolling layout axis from the monitor rotation.
+  ///
+  /// In en, this message translates to:
+  /// **'Automatic (follows rotation)'**
+  String get settingsDisplayScrollingLayoutAxisAuto;
+
+  /// Choice that forces a horizontal scrolling window strip.
+  ///
+  /// In en, this message translates to:
+  /// **'Horizontal'**
+  String get settingsDisplayScrollingLayoutAxisHorizontal;
+
+  /// Choice that forces a vertical scrolling window strip.
+  ///
+  /// In en, this message translates to:
+  /// **'Vertical'**
+  String get settingsDisplayScrollingLayoutAxisVertical;
 
   /// Label for the monitor scale selector.
   ///
@@ -4610,7 +4652,7 @@ abstract class AppLocalizations {
   /// Explains the available desktop window layouts.
   ///
   /// In en, this message translates to:
-  /// **'Stacking lets windows overlap. Tiling divides the desktop dynamically. Scrolling follows focus along a strip that turns vertical with a quarter-turned monitor.'**
+  /// **'Stacking lets windows overlap. Tiling divides the desktop dynamically. Scrolling follows focus along a strip; its axis is configured per display and follows rotation by default.'**
   String get settingsWindowLayoutDescription;
 
   /// Label for the Dwindle tiling window layout.

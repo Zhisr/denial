@@ -4,7 +4,7 @@
 //! bounded and verified before it is inspected; generated unchecked accessors
 //! never see bytes supplied directly by Flutter.
 
-use std::collections::{BTreeSet, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::error::Error;
 use std::ffi::CStr;
 use std::fmt;
@@ -676,6 +676,7 @@ pub struct WireBridge {
     windows: Vec<WindowDescription>,
     windows_revision: Option<u64>,
     restored_window_ids: Vec<u64>,
+    active_workspaces: BTreeMap<i64, u8>,
     // Flutter copies platform-channel payloads during the synchronous engine
     // call. Keep one builder alive here and lend its finished tail until the
     // next mutable bridge operation, eliminating both builder churn and the
@@ -701,6 +702,15 @@ impl WireBridge {
         work_area: WorkAreaOptions,
     ) -> Result<Self, WireError> {
         validate_topology(snapshot, atlas)?;
+        let active_workspaces = snapshot
+            .outputs
+            .iter()
+            .map(|output| {
+                monitor_id(output.id)
+                    .map(|monitor_id| (monitor_id, 1))
+                    .ok_or(WireError::Topology("monitor id exceeds i64"))
+            })
+            .collect::<Result<BTreeMap<_, _>, _>>()?;
         Ok(Self {
             snapshot: snapshot.clone(),
             atlas: atlas.clone(),
@@ -708,6 +718,7 @@ impl WireBridge {
             windows: Vec::new(),
             windows_revision: None,
             restored_window_ids: Vec::new(),
+            active_workspaces,
             outbound_builder: FlatBufferBuilder::with_capacity(1024),
             pending_input_layout: None,
             input_layout_scratch: InputLayoutSnapshot::default(),

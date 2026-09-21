@@ -107,9 +107,13 @@ new window splits the focused tile, each parent chooses its split direction
 from its current aspect ratio, and removing a window collapses the empty
 branch. Scrolling arranges tiles along a focus-following strip. Hold SUPER and
 turn the mouse wheel to move along that strip; the Layout page controls the
-wheel speed and whether wheel-up moves left or right. Each scrolling column
-uses the same directional split behavior as normal tiling, so dropping a tile
-on another tile's right edge creates a horizontal split inside that column.
+wheel speed and whether wheel-up moves left or right. The Displays page chooses
+an automatic, horizontal, or vertical scrolling axis for each output.
+Automatic preserves the transform-following behavior: horizontal for
+unrotated or half-turned outputs, and vertical for quarter-turned outputs. Each
+scrolling column uses the same directional split behavior as normal tiling, so
+dropping a tile on another tile's right edge creates a horizontal split inside
+that column.
 The existing maximize padding is also used as the gap between sibling tiles.
 Transient dialogs, fixed-size toplevels, auxiliary X11 window types, and
 override-redirect X11 surfaces remain floating. In the scrolling layout,
@@ -169,7 +173,9 @@ the highest refresh rate. Use
 `transform=NAME,normal|90|180|270|flipped|flipped-90|flipped-180|flipped-270`
 for rotation and reflection; angles follow Wayland's counterclockwise
 convention. Add `vrr=NAME` for each output that should use variable refresh
-rate, or `disabled=NAME` to leave a connected output outside the KMS and
+rate. Use `scrolling_axis=NAME,auto|horizontal|vertical` to choose the scrolling
+layout axis per output; an omitted or `auto` value follows the output transform.
+Use `disabled=NAME` to leave a connected output outside the KMS and
 Wayland topology. Flutter projects transformed outputs directly
 into their native, unrotated scanout buffers; the KMS mode and primary-plane
 rotation remain unchanged, including for 90/270-degree transforms. Denial
@@ -193,6 +199,7 @@ Command-line position assignments override the file:
 primary=DP-5
 DP-5=0,0,200
 transform=DP-5,90
+scrolling_axis=DP-5,horizontal
 DP-4=2560,0,180
 vrr=DP-4
 disabled=HDMI-A-1

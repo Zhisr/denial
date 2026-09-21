@@ -1316,73 +1316,24 @@ impl WaylandFrontend {
     }
 
     #[cfg(feature = "flutter")]
-    pub(crate) fn replay_window_state_events(&self) -> Vec<PendingWindowEvent> {
-        let mut events = Vec::new();
-        for window in self.space.elements() {
-            let Some(root_surface) = self.window_root_surface(window) else {
-                continue;
-            };
-            let Some(window_id) = self.surface_id(&root_surface) else {
-                continue;
-            };
-            let presentation = self.managed_window_presentation(window);
-            let fullscreen = presentation.fullscreen;
-            let maximized = presentation.maximized;
-            if fullscreen || maximized {
-                if let Some(restore) = self
-                    .window_record_for_surface(&root_surface.id())
-                    .and_then(|record| record.shell_presentation)
-                    .map(ShellWindowPresentation::normal_geometry)
-                    .or_else(|| {
-                        self.window_record_for_surface(&root_surface.id())?
-                            .restore_geometry
-                    })
-                    && let Some(placement) = self.window_placement(
-                        window,
-                        restore,
-                        self.window_geometry_target(window),
-                        WindowPlacementPhase::End,
-                        WindowPlacementChange::Resize,
-                    )
-                {
-                    events.push(PendingWindowEvent::Placement(placement));
-                }
-                if maximized {
-                    events.push(PendingWindowEvent::Action(
-                        window_id,
-                        WindowAction::Maximize,
-                    ));
-                }
-                if fullscreen {
-                    events.push(PendingWindowEvent::Action(
-                        window_id,
-                        WindowAction::Fullscreen,
-                    ));
-                }
-            }
-            if self.surface_is_minimized(&root_surface.id()) {
-                events.push(PendingWindowEvent::Action(
-                    window_id,
-                    WindowAction::Minimize,
-                ));
-            }
-        }
-
-        let focused = self
+    pub(crate) fn replay_window_focus_event(&self) -> Option<PendingWindowEvent> {
+        // Geometry, workspace ownership, minimize, maximize, and fullscreen
+        // are already authoritative fields in the replacement generation's
+        // first WindowSnapshot. Replaying their historical transitions after
+        // that snapshot would make Dart reduce newer state a second time.
+        // Keyboard focus is the only desktop window state absent from the
+        // snapshot, so replay only that event after Flutter is ready.
+        let focused_window_id = self
             .seat
             .get_keyboard()
-            .and_then(|keyboard| keyboard.current_focus());
-        if let Some(window_id) = focused
+            .and_then(|keyboard| keyboard.current_focus())
             .as_ref()
             .and_then(|focus| focus.wl_surface())
             .and_then(|surface| self.owning_toplevel_surface(&surface))
             .filter(|surface| !self.surface_is_minimized(&surface.id()))
             .as_ref()
-            .and_then(|surface| self.surface_id(surface))
-        {
-            events.push(PendingWindowEvent::Activated(window_id));
-        }
-        events
+            .and_then(|surface| self.surface_id(surface));
+        focused_window_id.map(PendingWindowEvent::Activated)
     }
 
     pub(super) fn register_surface(&mut self, surface: &WlSurface) -> u64 {

@@ -69,6 +69,7 @@ void main() {
         logicalHeight: 1440,
         scale: 1,
         transform: DenialOutputTransform.normal,
+        scrollingLayoutAxis: DenialScrollingLayoutAxis.auto,
         adaptiveSyncSupported: true,
         adaptiveSync: false,
         currentMode: landscapeMode,
@@ -87,6 +88,7 @@ void main() {
         logicalHeight: 2560,
         scale: 1,
         transform: DenialOutputTransform.rotate270,
+        scrollingLayoutAxis: DenialScrollingLayoutAxis.auto,
         adaptiveSyncSupported: true,
         adaptiveSync: true,
         currentMode: portraitMode,
@@ -95,10 +97,12 @@ void main() {
     ];
     const capabilities = DenialOutputCapabilities(
       apply: true,
+      enable: true,
       position: true,
       mode: true,
       scale: true,
       transform: true,
+      scrollingLayoutAxis: true,
       adaptiveSync: true,
       persistent: true,
     );
@@ -149,6 +153,10 @@ void main() {
 
       expect(tester.takeException(), isNull);
       expect(tester.getSize(find.byKey(settingsMonitorCanvasKey)).height, 360);
+      expect(
+        find.byKey(settingsScrollingLayoutAxisSelectorKey('DP-4')),
+        findsOneWidget,
+      );
       final cardSize = tester.getSize(
         find.byKey(settingsDisplayBrightnessCardKey),
       );

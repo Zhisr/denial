@@ -1904,6 +1904,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsDisplayArrangementTitle => 'Monitor configuration';
 
   @override
+  String get settingsDisplayEnabled => 'Use this display';
+
+  @override
+  String get settingsDisplayEnabledDescription =>
+      'Include this monitor in the desktop. At least one display must remain enabled.';
+
+  @override
   String get settingsDisplayBrightnessDescription =>
       'Adjust the main display brightness.';
 
@@ -1948,7 +1955,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsDisplayPrimaryHint =>
-      'Shell surfaces open on the primary display. Automatic uses the connected display with the highest refresh rate.';
+      'Shell surfaces open on the primary display. Automatic uses the enabled display with the highest refresh rate.';
 
   @override
   String get settingsDisplayRefreshRate => 'Refresh rate';
@@ -1970,6 +1977,23 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsDisplayRotation270 => '90° clockwise';
+
+  @override
+  String get settingsDisplayScrollingLayoutAxis => 'Scrolling layout axis';
+
+  @override
+  String get settingsDisplayScrollingLayoutAxisDescription =>
+      'Choose how scrolling windows are arranged on this display.';
+
+  @override
+  String get settingsDisplayScrollingLayoutAxisAuto =>
+      'Automatic (follows rotation)';
+
+  @override
+  String get settingsDisplayScrollingLayoutAxisHorizontal => 'Horizontal';
+
+  @override
+  String get settingsDisplayScrollingLayoutAxisVertical => 'Vertical';
 
   @override
   String get settingsDisplayScale => 'Scale';
@@ -2577,7 +2601,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsWindowLayoutDescription =>
-      'Stacking lets windows overlap. Tiling divides the desktop dynamically. Scrolling follows focus along a strip that turns vertical with a quarter-turned monitor.';
+      'Stacking lets windows overlap. Tiling divides the desktop dynamically. Scrolling follows focus along a strip; its axis is configured per display and follows rotation by default.';
 
   @override
   String get settingsWindowLayoutDwindle => 'Tiling';

@@ -216,6 +216,17 @@ impl GammaController {
         external_changes: impl IntoIterator<Item = (OutputId, Option<Vec<u16>>)>,
         internal_requests: &[SoftwareDimmingRequest],
     ) -> GammaApplyOutcome {
+        self.apply_with(external_changes, internal_requests, |state, level| {
+            apply_output(drm, state, level)
+        })
+    }
+
+    fn apply_with(
+        &mut self,
+        external_changes: impl IntoIterator<Item = (OutputId, Option<Vec<u16>>)>,
+        internal_requests: &[SoftwareDimmingRequest],
+        mut apply: impl FnMut(&mut OutputGamma, f64) -> Result<(), String>,
+    ) -> GammaApplyOutcome {
         for (output, ramp) in external_changes {
             if let Some(state) = self.outputs.get_mut(&output) {
                 state.external_ramp = ramp;
@@ -240,17 +251,20 @@ impl GammaController {
                 .unwrap_or(1.0)
                 .clamp(0.0, 1.0);
             let had_external = state.external_ramp.is_some();
-            if let Err(error) = apply_output(drm, state, level) {
+            if let Err(error) = apply(state, level) {
                 warn!(?output, %error, "could not apply DRM gamma LUT");
                 outcome.failed_outputs.insert(output);
                 if had_external {
                     outcome.failed_external.push(output);
                     state.external_ramp = None;
-                    state.dirty = true;
-                    if let Err(reset_error) = apply_output(drm, state, level) {
+                    if let Err(reset_error) = apply(state, level) {
                         warn!(?output, %reset_error, "could not restore the internal gamma layer after a client failure");
                     }
                 }
+                // A failed DRM apply is terminal for this state transition. Retrying the
+                // same rejected LUT every frame cannot make it valid; a new client ramp,
+                // dimming request, modeset, or topology change will mark it dirty again.
+                state.dirty = false;
             }
         }
         outcome
@@ -580,6 +594,62 @@ mod tests {
                 .into_iter()
             )
         );
+    }
+
+    #[test]
+    fn rejected_external_gamma_is_not_retried_without_a_new_change() {
+        let output = OutputId(10);
+        let mut controller = GammaController::default();
+        controller.outputs.insert(
+            output,
+            OutputGamma {
+                crtc: from_u32(1).expect("nonzero CRTC handle"),
+                property: from_u32(2).expect("nonzero property handle"),
+                size: 2,
+                original_blob: 0,
+                original_ramp: None,
+                installed_blob: None,
+                external_ramp: None,
+                dirty: false,
+            },
+        );
+
+        let mut attempts = 0;
+        let outcome = controller.apply_with([(output, Some(vec![0; 6]))], &[], |state, _level| {
+            attempts += 1;
+            // Match install_blob's behavior when DRM rejects the property.
+            state.dirty = true;
+            Err("rejected gamma LUT".to_owned())
+        });
+
+        assert_eq!(
+            attempts, 2,
+            "client apply and internal restore are attempted"
+        );
+        assert_eq!(outcome.failed_external, vec![output]);
+        assert_eq!(outcome.failed_outputs, BTreeSet::from([output]));
+        let state = controller.outputs.get(&output).expect("known output");
+        assert!(state.external_ramp.is_none());
+        assert!(!state.dirty, "the rejected transition must remain latched");
+
+        let outcome = controller.apply_with(
+            std::iter::empty::<(OutputId, Option<Vec<u16>>)>(),
+            &[],
+            |_state, _level| panic!("an unchanged failed LUT must not be retried"),
+        );
+        assert!(outcome.failed_external.is_empty());
+        assert!(outcome.failed_outputs.is_empty());
+
+        let mut retried_after_change = false;
+        let outcome =
+            controller.apply_with([(output, Some(vec![u16::MAX; 6]))], &[], |state, _level| {
+                retried_after_change = true;
+                state.dirty = false;
+                Ok(())
+            });
+        assert!(retried_after_change, "a new client ramp must be attempted");
+        assert!(outcome.failed_external.is_empty());
+        assert!(outcome.failed_outputs.is_empty());
     }
 
     #[test]

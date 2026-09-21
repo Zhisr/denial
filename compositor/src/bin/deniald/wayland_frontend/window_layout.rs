@@ -10,6 +10,7 @@ use smithay::utils::{Logical, Point, Rectangle, Size};
 use smithay::wayland::seat::WaylandFocus;
 use tracing::info;
 
+use super::super::output_topology::ScrollingLayoutAxis;
 #[cfg(feature = "flutter")]
 use super::super::settings::ScrollingLayoutWheelUpDirection;
 use super::super::window_grab::constrain_dimension;
@@ -98,11 +99,14 @@ fn mouse_wheel_scrolling_layout_delta(
     vertical_delta * direction * default_tile_stride * speed / MOUSE_WHEEL_ANGLE_PER_STEP
 }
 
-fn scrolling_layout_axis(transform: super::OutputTransform) -> LayoutAxis {
-    if transform.swaps_axes() {
-        LayoutAxis::Vertical
-    } else {
-        LayoutAxis::Horizontal
+fn scrolling_layout_axis(
+    setting: ScrollingLayoutAxis,
+    transform: super::OutputTransform,
+) -> LayoutAxis {
+    match setting {
+        ScrollingLayoutAxis::Auto if transform.swaps_axes() => LayoutAxis::Vertical,
+        ScrollingLayoutAxis::Auto | ScrollingLayoutAxis::Horizontal => LayoutAxis::Horizontal,
+        ScrollingLayoutAxis::Vertical => LayoutAxis::Vertical,
     }
 }
 
@@ -122,6 +126,29 @@ fn layout_frame_minimum_size(
 }
 
 impl WaylandFrontend {
+    fn scrolling_layout_axis_for_output(&self, output: &super::WaylandOutput) -> LayoutAxis {
+        scrolling_layout_axis(
+            self.scrolling_layout_axes
+                .get(&output.connector)
+                .copied()
+                .unwrap_or_default(),
+            output.transform,
+        )
+    }
+
+    #[cfg(feature = "flutter")]
+    pub(crate) fn set_scrolling_layout_axes(
+        &mut self,
+        axes: &std::collections::BTreeMap<String, ScrollingLayoutAxis>,
+    ) -> bool {
+        if self.scrolling_layout_axes == *axes {
+            return false;
+        }
+        self.scrolling_layout_axes.clone_from(axes);
+        self.arrange_layout_windows();
+        true
+    }
+
     pub(super) fn window_layout_manages_geometry(&self) -> bool {
         self.window_layout.manages_geometry()
     }
@@ -146,7 +173,7 @@ impl WaylandFrontend {
         self.outputs
             .iter()
             .find(|output| output.id == space.output)
-            .map(|output| scrolling_layout_axis(output.transform))
+            .map(|output| self.scrolling_layout_axis_for_output(output))
     }
 
     pub(super) fn window_is_layout_maximized(&self, window: &Window) -> bool {
@@ -327,7 +354,7 @@ impl WaylandFrontend {
             work_area,
             self.layout_gap(),
             monitor_geometry,
-            scrolling_layout_axis(output.transform),
+            self.scrolling_layout_axis_for_output(output),
         ))
     }
 
@@ -473,7 +500,7 @@ impl WaylandFrontend {
                 (
                     output.id,
                     self.maximize_work_area(Some(&output.output), output.logical_geometry),
-                    scrolling_layout_axis(output.transform),
+                    self.scrolling_layout_axis_for_output(output),
                 )
             })
             .collect::<Vec<_>>();
@@ -835,6 +862,21 @@ impl WaylandFrontend {
         window: &Window,
         forget_restore: bool,
     ) -> bool {
+        let removed = self.detach_window_from_layout(window, forget_restore);
+        if removed {
+            self.arrange_layout_windows();
+        }
+        removed
+    }
+
+    /// Remove one leaf without arranging yet. Topology retirement batches all
+    /// leaves from a disabled output so surviving output trees are arranged
+    /// exactly once and never reconstructed from stacking order.
+    pub(super) fn detach_window_from_layout(
+        &mut self,
+        window: &Window,
+        forget_restore: bool,
+    ) -> bool {
         let Some(window_id) = self.window_root_surface(window).map(|root| root.id()) else {
             return false;
         };
@@ -843,9 +885,6 @@ impl WaylandFrontend {
             if let Some(record) = self.window_record_for_surface_mut(&window_id) {
                 record.layout_restore_geometry = None;
             }
-        }
-        if removed {
-            self.arrange_layout_windows();
         }
         removed
     }
@@ -1007,7 +1046,7 @@ impl WaylandFrontend {
                 (
                     output.id,
                     self.maximize_work_area(Some(&output.output), output.logical_geometry),
-                    scrolling_layout_axis(output.transform),
+                    self.scrolling_layout_axis_for_output(output),
                 )
             })
             .collect::<Vec<_>>();
@@ -1639,11 +1678,17 @@ mod tests {
     #[test]
     fn quarter_turned_outputs_use_the_vertical_scrolling_axis() {
         assert_eq!(
-            scrolling_layout_axis(super::super::OutputTransform::Normal),
+            scrolling_layout_axis(
+                ScrollingLayoutAxis::Auto,
+                super::super::OutputTransform::Normal,
+            ),
             LayoutAxis::Horizontal
         );
         assert_eq!(
-            scrolling_layout_axis(super::super::OutputTransform::Rotate180),
+            scrolling_layout_axis(
+                ScrollingLayoutAxis::Auto,
+                super::super::OutputTransform::Rotate180,
+            ),
             LayoutAxis::Horizontal
         );
         for transform in [
@@ -1652,8 +1697,29 @@ mod tests {
             super::super::OutputTransform::Flipped90,
             super::super::OutputTransform::Flipped270,
         ] {
-            assert_eq!(scrolling_layout_axis(transform), LayoutAxis::Vertical);
+            assert_eq!(
+                scrolling_layout_axis(ScrollingLayoutAxis::Auto, transform),
+                LayoutAxis::Vertical,
+            );
         }
+    }
+
+    #[test]
+    fn explicit_scrolling_axis_overrides_the_output_transform() {
+        assert_eq!(
+            scrolling_layout_axis(
+                ScrollingLayoutAxis::Horizontal,
+                super::super::OutputTransform::Rotate90,
+            ),
+            LayoutAxis::Horizontal,
+        );
+        assert_eq!(
+            scrolling_layout_axis(
+                ScrollingLayoutAxis::Vertical,
+                super::super::OutputTransform::Normal,
+            ),
+            LayoutAxis::Vertical,
+        );
     }
 
     #[test]

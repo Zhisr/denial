@@ -44,13 +44,16 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
     required bool enabled,
     required int count,
     required Iterable<int> monitorIds,
+    Map<int, int> authoritativeActiveWorkspaces = const <int, int>{},
   }) {
     final safeCount = count.clamp(2, 9).toInt();
     final monitors = monitorIds.toSet();
     final active = <int, int>{
       for (final monitorId in monitors)
         monitorId: enabled
-            ? (state.activeWorkspaces[monitorId] ?? 1)
+            ? (authoritativeActiveWorkspaces[monitorId] ??
+                      state.activeWorkspaces[monitorId] ??
+                      1)
                   .clamp(1, safeCount)
                   .toInt()
             : 1,
@@ -172,6 +175,7 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
         ? devicePixelRatio
         : 1.0;
     final pixelRatioChanged = nextPixelRatio != _devicePixelRatio;
+    final windowLayoutChanged = _windowLayout != windowLayout;
     if (identical(windows, _lastSyncedWindows) &&
         snapshotSequence == _lastSyncedSnapshotSequence &&
         !pixelRatioChanged &&
@@ -255,7 +259,7 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
       );
       final geometryIsNew = snapshotSequence > revisions.geometry;
       final metadataIsNew = snapshotSequence > revisions.metadata;
-      if (geometryIsNew || metadataIsNew) {
+      if (geometryIsNew || metadataIsNew || windowLayoutChanged) {
         var frame = existing.frame;
         var fullscreenRestoreFrame = existing.fullscreenRestoreFrame;
         var monitorId = existing.monitorId;
@@ -296,7 +300,8 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
         // rectangle with the retained live-move delta and visibly apply the
         // motion twice. Placement packets remain the only geometry authority
         // until their end phase commits the final frame.
-        if (geometryIsNew &&
+        if ((geometryIsNew ||
+                (windowLayoutChanged && !window.isLocalFlutter)) &&
             !existing.dragging &&
             !revisions.placementTransactionActive &&
             !existing.layoutPreviewing &&

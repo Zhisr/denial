@@ -192,10 +192,26 @@ impl FlutterRuntime {
             .as_ref()
             .expect("Flutter runtime is shutting down")
             .engine();
+        if action == wire::ShellAction::WorkspaceChanged {
+            let monitor_id = monitor_id.ok_or("workspace action has no monitor")?;
+            let workspace_id = workspace_id.ok_or("workspace action has no workspace")?;
+            let layout = self
+                .wire
+                .update_active_workspace(monitor_id, workspace_id)?;
+            engine.send_platform_message(wire::TO_FLUTTER_CHANNEL, layout)?;
+        }
         let event = self
             .wire
             .encode_shell_action(action, monitor_id, workspace_id)?;
         engine.send_platform_message(wire::TO_FLUTTER_CHANNEL, event)?;
+        Ok(())
+    }
+
+    pub fn set_active_workspaces(
+        &mut self,
+        workspaces: impl IntoIterator<Item = (i64, u8)>,
+    ) -> Result<(), Box<dyn Error>> {
+        self.wire.set_active_workspaces(workspaces)?;
         Ok(())
     }
 

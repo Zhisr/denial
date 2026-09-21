@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::error::Error;
 use std::ffi::{OsStr, OsString};
 #[cfg(feature = "flutter")]
@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use denial_core::topology::{AtlasPlan, OutputId, OutputTransform, TopologySnapshot};
+use super::output_topology::ScrollingLayoutAxis;
 #[cfg(feature = "flutter")]
 use smithay::backend::allocator::Buffer as AllocatorBuffer;
 use smithay::backend::allocator::dmabuf::Dmabuf;
@@ -132,7 +133,7 @@ use super::window_placement_store::{
 #[cfg(feature = "flutter")]
 use super::wire::{
     CursorStateDescription, CursorStateKind, InputLayoutSnapshot, SurfaceLayerDescription,
-    SurfaceRoleDescription, WindowAction, WindowContentKind, WindowDescription, WindowGeometry,
+    SurfaceRoleDescription, WindowContentKind, WindowDescription, WindowGeometry,
     WindowOpacityClass, WindowPlacement, WindowPlacementChange, WindowPlacementPhase,
 };
 
@@ -251,8 +252,8 @@ use topology::{
 use window_management::SHELL_FRAME_BORDER;
 #[cfg(feature = "flutter")]
 pub(super) use window_management::{
-    apply_window_commands, queue_local_flutter_window_placement, queue_transient_window_placement,
-    queue_window_placement,
+    apply_window_commands, finalize_topology_window_reconciliation,
+    queue_local_flutter_window_placement, queue_transient_window_placement, queue_window_placement,
 };
 #[cfg(feature = "flutter")]
 use window_management::{
@@ -599,6 +600,7 @@ pub(super) struct WaylandFrontend {
     text_input: TextInputManager,
     input_method: InputMethodManager,
     outputs: Vec<WaylandOutput>,
+    scrolling_layout_axes: BTreeMap<String, ScrollingLayoutAxis>,
     work_area: crate::options::WorkAreaOptions,
     ticker_output: Option<OutputId>,
     pub atlas_output: Output,

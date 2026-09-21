@@ -1,6 +1,8 @@
 //! Bounded calloop dispatch for Flutter, Wayland, KMS, and control-plane events.
 
-use super::kms_pipeline::{HotplugRequest, apply_hotplug_topology};
+use super::kms_pipeline::{
+    HotplugRequest, ResidentModeRequest, apply_hotplug_topology, apply_resident_mode_topology,
+};
 use super::kms_session::{
     log_shutdown, recover_stalled_kms_presentation, service_session_lifecycle,
 };
@@ -525,6 +527,34 @@ fn output_hardware_changed(outputs: &[ConnectedOutput], scanouts: &[Scanout]) ->
     outputs.len() != scanouts.len() || output_properties_changed(outputs, scanouts)
 }
 
+/// A refresh/VRR transition can keep Flutter's native render targets resident
+/// when every connector remains on the same CRTC at the same pixel extent.
+/// Transform changes retain their existing geometry-only path; combining one
+/// with a modeset is deliberately left to the general hotplug transaction.
+fn resident_mode_change_supported(outputs: &[ConnectedOutput], scanouts: &[Scanout]) -> bool {
+    outputs.len() == scanouts.len()
+        && outputs.iter().all(|output| {
+            scanouts
+                .iter()
+                .find(|scanout| scanout.output.id == output.id)
+                .is_some_and(|scanout| {
+                    scanout.output.connector == output.connector
+                        && scanout.output.crtc == output.crtc
+                        && scanout.output.mode.size() == output.mode.size()
+                        && scanout.output.transform == output.transform
+                })
+        })
+        && outputs.iter().any(|output| {
+            scanouts
+                .iter()
+                .find(|scanout| scanout.output.id == output.id)
+                .is_some_and(|scanout| {
+                    scanout.output.mode != output.mode
+                        || scanout.output.vrr_enabled != output.vrr_enabled
+                })
+        })
+}
+
 fn prepare_output_confirmation_rollback(
     request: &PendingOutputApply,
     scanouts: &[Scanout],
@@ -577,6 +607,7 @@ fn prepare_output_persistence(
                 .get(&output.name)
                 .copied()
                 .unwrap_or(OutputTransform::Normal),
+            scrolling_layout_axis: staged_configuration.scrolling_layout_axis(&output.name),
             adaptive_sync: output.adaptive_sync,
         })
         .collect::<Vec<_>>();
@@ -661,6 +692,7 @@ struct StagedOutputApply {
     prepared_persistence: Option<options::PreparedOutputConfig>,
     transform_only: bool,
     hardware_changed: bool,
+    resident_mode_change: bool,
     topology_changed: bool,
 }
 
@@ -755,6 +787,7 @@ fn stage_output_apply(
         }
     };
     let hardware_changed = output_hardware_changed(&outputs, scanouts);
+    let resident_mode_change = resident_mode_change_supported(&outputs, scanouts);
     let current_topology = topology.snapshot();
     let topology_changed =
         preview.outputs != current_topology.outputs || preview.ticker != current_topology.ticker;
@@ -769,6 +802,7 @@ fn stage_output_apply(
         prepared_persistence,
         transform_only,
         hardware_changed,
+        resident_mode_change,
         topology_changed,
     })
 }
@@ -922,6 +956,7 @@ fn apply_hardware_output_configuration(
         Duration,
     )>,
     prepared_persistence: Option<options::PreparedOutputConfig>,
+    resident_mode_change: bool,
     renderer: &mut GlesRenderer,
     scanout_allocator: &mut ScanoutAllocator,
     drm: &mut DrmDevice,
@@ -943,22 +978,40 @@ fn apply_hardware_output_configuration(
     volition_event_sender: &SyncSender<volition::Event>,
 ) -> Result<(), Box<dyn Error>> {
     scheduler.prepare_reconfiguration(scanouts, events)?;
-    let apply = apply_hotplug_topology(HotplugRequest {
-        renderer,
-        allocator: scanout_allocator,
-        drm,
-        swapchain,
-        scanouts,
-        restore_state,
-        topology,
-        outputs,
-        configuration: &configuration,
-        frame_number: raster_frames,
-        event_loop,
-        events,
-        flutter,
-        flutter_launcher: Some(flutter_launcher),
-    });
+    let apply = if resident_mode_change {
+        apply_resident_mode_topology(ResidentModeRequest {
+            drm,
+            swapchain,
+            scanouts,
+            restore_state,
+            topology,
+            outputs,
+            current_configuration: output_configuration,
+            staged_configuration: configuration.clone(),
+            event_loop,
+            events,
+            flutter: flutter
+                .as_mut()
+                .ok_or("Flutter runtime disappeared during resident mode change")?,
+        })
+    } else {
+        apply_hotplug_topology(HotplugRequest {
+            renderer,
+            allocator: scanout_allocator,
+            drm,
+            swapchain,
+            scanouts,
+            restore_state,
+            topology,
+            outputs,
+            configuration: &configuration,
+            frame_number: raster_frames,
+            event_loop,
+            events,
+            flutter,
+            flutter_launcher: Some(flutter_launcher),
+        })
+    };
     if let Err(error) = apply {
         let message = error.to_string();
         events.output_control_dirty = true;
@@ -990,6 +1043,9 @@ fn apply_hardware_output_configuration(
     }
 
     *retired_output_flips = retired_output_flips.saturating_add(scheduler.presented_frames());
+    if let Some(frontend) = events.wayland.as_mut() {
+        frontend.set_scrolling_layout_axes(&configuration.scrolling_layout_axes);
+    }
     *output_configuration = configuration;
     events.output_control_dirty = true;
     (*scheduler, *frame_scheduler) = create_frame_schedulers(
@@ -1057,10 +1113,14 @@ fn apply_staged_output_configuration(
         prepared_persistence,
         transform_only,
         hardware_changed,
+        resident_mode_change,
         topology_changed,
     } = staged;
 
     if !hardware_changed && !topology_changed {
+        if let Some(frontend) = events.wayland.as_mut() {
+            frontend.set_scrolling_layout_axes(&configuration.scrolling_layout_axes);
+        }
         *output_configuration = configuration;
         events.output_control_dirty = true;
         apply_requested_output_power(
@@ -1115,6 +1175,7 @@ fn apply_staged_output_configuration(
         desired_power,
         confirmation_rollback,
         prepared_persistence,
+        resident_mode_change,
         renderer,
         scanout_allocator,
         drm,
@@ -1345,6 +1406,7 @@ fn observe_output_topology(
             );
         }
         events.topology_dirty = true;
+        events.resident_geometry_reconfigure_requested |= resident_geometry_reconfigure_requested;
         event_loop.dispatch(KMS_PRESENTATION_RECOVERY_RETRY, events)?;
         return Ok(OutputTopologyObservation::WaitingForOutputs);
     }
@@ -2099,6 +2161,14 @@ fn expire_output_confirmation(
     );
 }
 
+fn output_control_publication_deferred(events: &RuntimeState) -> bool {
+    events.resident_geometry_reconfigure_requested
+}
+
+fn output_control_publication_became_dirty(was_dirty: bool, is_dirty: bool) -> bool {
+    !was_dirty && is_dirty
+}
+
 #[allow(clippy::too_many_arguments)]
 fn publish_output_control_updates(
     output_control: &output_control::OutputControlPublisher,
@@ -2113,30 +2183,42 @@ fn publish_output_control_updates(
     pending_confirmation_success: &mut VecDeque<PendingOutputConfirmation>,
     events: &mut RuntimeState,
 ) -> Result<Option<output_control::OutputControlSnapshot>, Box<dyn Error>> {
+    // A rollback updates `output_configuration` before its KMS/Flutter
+    // topology transaction updates `scanouts` and `topology`. Publishing in
+    // that interval would expose a snapshot assembled from two different
+    // configurations. Keep the previous snapshot (including its pending
+    // confirmation) authoritative until reconfiguration has completed.
+    let publication_deferred = output_control_publication_deferred(events);
     let needs_snapshot = ready_output_apply || pending_output_success.is_some();
-    let mut snapshot = output_control.publish_if_dirty(&mut events.output_control_dirty, || {
-        output_control_state(
-            drm_scanner,
-            scanouts,
-            topology,
-            output_configuration,
-            persistence_available,
-            active_output_confirmation
-                .as_ref()
-                .map(|pending| pending.state),
-        )
-    })?;
+    let mut snapshot = if publication_deferred {
+        None
+    } else {
+        output_control.publish_if_dirty(&mut events.output_control_dirty, || {
+            output_control_state(
+                drm_scanner,
+                scanouts,
+                topology,
+                output_configuration,
+                persistence_available,
+                active_output_confirmation
+                    .as_ref()
+                    .map(|pending| pending.state),
+            )
+        })?
+    };
     if needs_snapshot && snapshot.is_none() {
         snapshot = Some(output_control.snapshot());
     }
-    if let Some(request) = pending_output_success.take() {
-        request.reply(Ok(snapshot
-            .as_ref()
-            .expect("successful output apply has a publication snapshot")
-            .clone()));
-    }
-    while let Some(request) = pending_confirmation_success.pop_front() {
-        request.reply(Ok(()));
+    if !publication_deferred {
+        if let Some(request) = pending_output_success.take() {
+            request.reply(Ok(snapshot
+                .as_ref()
+                .expect("successful output apply has a publication snapshot")
+                .clone()));
+        }
+        while let Some(request) = pending_confirmation_success.pop_front() {
+            request.reply(Ok(()));
+        }
     }
     Ok(snapshot)
 }
@@ -2154,6 +2236,7 @@ fn synchronize_power_policy(
     events: &mut RuntimeState,
     now: Instant,
 ) -> Result<bool, Box<dyn Error>> {
+    let output_control_was_dirty = events.output_control_dirty;
     if background_services_due {
         collect_output_power_requests(events);
     }
@@ -2179,7 +2262,16 @@ fn synchronize_power_policy(
         }
     }
     release_sleep_delay_if_ready(scanouts, events);
-    Ok(events.output_control_dirty)
+    // The output publisher normally clears this bit at the start of the
+    // iteration, so a transition to dirty here asks for one publication
+    // boundary before more work. During confirmation rollback publication is
+    // deliberately deferred while the old geometry is still resident. That
+    // pre-existing dirty bit must not keep short-circuiting the loop before
+    // the topology transaction which can actually complete the rollback.
+    Ok(output_control_publication_became_dirty(
+        output_control_was_dirty,
+        events.output_control_dirty,
+    ))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2484,7 +2576,11 @@ pub(super) fn run_flutter_event_loop(
         // their trained connector and CRTC state.
         let scanout_rebased = events.scanout_rebased
             || (outputs_disconnected && scanouts.iter().any(|scanout| scanout.powered));
-        events.scanout_rebased = false;
+        // Keep this as a level-triggered recovery latch until the topology
+        // transaction installs a fresh scheduler. Consuming it here lets an
+        // unrelated publication boundary skip topology repair for one
+        // iteration; the stale scheduler then immediately redetects the same
+        // submitted frame and can spin in KMS recovery with every CRTC off.
         if scanout_rebased && let Some(runtime) = flutter.as_mut() {
             cancel_active_screenshot(
                 &mut screenshot_manager,
@@ -2839,7 +2935,10 @@ pub(super) fn run_flutter_event_loop(
 
 #[cfg(test)]
 mod tests {
-    use super::output_transaction_waiting;
+    use super::{
+        RuntimeState, output_control_publication_became_dirty, output_control_publication_deferred,
+        output_transaction_waiting,
+    };
 
     #[test]
     fn resident_geometry_rollback_stops_frame_production_while_targets_drain() {
@@ -2849,5 +2948,22 @@ mod tests {
     #[test]
     fn idle_output_transaction_does_not_stop_frame_production() {
         assert!(!output_transaction_waiting(false, false, false));
+    }
+
+    #[test]
+    fn output_control_publication_waits_for_resident_geometry_reconfiguration() {
+        let mut events = RuntimeState::default();
+        assert!(!output_control_publication_deferred(&events));
+
+        events.topology_dirty = true;
+        assert!(!output_control_publication_deferred(&events));
+        events.resident_geometry_reconfigure_requested = true;
+        assert!(output_control_publication_deferred(&events));
+    }
+
+    #[test]
+    fn deferred_dirty_publication_does_not_starve_rollback_reconfiguration() {
+        assert!(output_control_publication_became_dirty(false, true));
+        assert!(!output_control_publication_became_dirty(true, true));
     }
 }

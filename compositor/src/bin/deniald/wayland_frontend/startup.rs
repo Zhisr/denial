@@ -12,6 +12,7 @@ impl WaylandFrontend {
         drm_device: DrmDeviceFd,
         xwayland_enabled: bool,
         work_area: crate::options::WorkAreaOptions,
+        scrolling_layout_axes: BTreeMap<String, ScrollingLayoutAxis>,
         settings: SettingsManager,
         shortcuts: ShortcutManager,
     ) -> Result<Self, Box<dyn Error>> {
@@ -473,6 +474,7 @@ impl WaylandFrontend {
             text_input,
             input_method,
             outputs,
+            scrolling_layout_axes,
             work_area,
             ticker_output: snapshot.ticker,
             atlas_output,

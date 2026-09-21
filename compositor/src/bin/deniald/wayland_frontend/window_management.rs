@@ -2484,6 +2484,68 @@ pub(super) fn apply_managed_minimize(
     true
 }
 
+/// Finalize the window side of a committed output-membership change.
+///
+/// KMS calls this only after retired CRTCs are dark and after replacement
+/// Flutter startup can no longer fail. Keeping it separate from
+/// `update_topology` also leaves rollback free to restore the untouched layout
+/// trees when publication or engine startup fails.
+#[cfg(feature = "flutter")]
+pub(crate) fn finalize_topology_window_reconciliation(
+    state: &mut RuntimeState,
+    reconciliation: super::topology::TopologyWindowReconciliation,
+) {
+    if !reconciliation.layout_membership_changed {
+        return;
+    }
+
+    let mut changed = false;
+    for window_id in reconciliation.windows_to_minimize {
+        let local = state
+            .wayland
+            .as_ref()
+            .is_some_and(|frontend| frontend.is_local_flutter_window(window_id));
+        if local {
+            let frontend = state.wayland.as_mut().expect("missing Wayland frontend");
+            if frontend.focused_local_flutter_window() == Some(window_id) {
+                frontend.clear_local_flutter_focus();
+            }
+            changed |= frontend.set_local_flutter_window_minimized(window_id, true);
+            continue;
+        }
+
+        let Some(window) = state
+            .wayland
+            .as_ref()
+            .and_then(|frontend| frontend.window_for_id(window_id))
+        else {
+            continue;
+        };
+        let Some(root) = state
+            .wayland
+            .as_ref()
+            .and_then(|frontend| frontend.window_root_surface(&window))
+        else {
+            continue;
+        };
+        if let Some(managed) = ManagedWindow::new(&window) {
+            managed.prepare_minimized(true);
+        }
+        let frontend = state.wayland.as_mut().expect("missing Wayland frontend");
+        changed |= frontend.set_surface_minimized(root.id(), true);
+        changed |= frontend.detach_window_from_layout(&window, false);
+        release_window_focus(state, &window);
+    }
+
+    changed |= state
+        .wayland
+        .as_mut()
+        .is_some_and(WaylandFrontend::arrange_layout_windows);
+    if changed {
+        state.scene_sync.mark_dirty();
+    }
+}
+
 #[cfg(all(test, feature = "flutter"))]
 mod tests {
     use smithay::utils::{Logical, Point, Rectangle, Size};

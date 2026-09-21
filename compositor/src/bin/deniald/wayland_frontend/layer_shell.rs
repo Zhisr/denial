@@ -141,7 +141,12 @@ impl WlrLayerShellHandler for RuntimeState {
     fn new_popup(&mut self, parent: WlrLayerSurface, popup: PopupSurface) {
         let frontend = self.wayland.as_mut().expect("missing Wayland frontend");
         let popup_surface = popup.wl_surface().clone();
-        let _ = frontend.popups.track_popup(PopupKind::Xdg(popup));
+        // XdgShellHandler::new_popup already tracks every XDG popup. At that
+        // point a layer-shell popup is still parentless, so PopupManager keeps
+        // it in its pending list until the first surface commit. Tracking it
+        // again here, after get_popup assigns the layer parent, inserts it into
+        // the popup tree immediately; the first commit then inserts the pending
+        // entry a second time and publishes the same surface twice.
         if let Some((_, output_id)) = frontend.layer_root_surface(parent.wl_surface())
             && let Some(output) = frontend.outputs.iter().find(|entry| entry.id == output_id)
         {

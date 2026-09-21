@@ -83,6 +83,11 @@ class _DesktopInputLayoutPublisherState
           .syncWorkspaceConfiguration(
             enabled: settings.workspacesEnabled,
             count: settings.workspaceCount,
+            authoritativeActiveWorkspaces: <int, int>{
+              for (final output
+                  in displayLayout?.outputs ?? const <DisplayOutput>[])
+                output.monitorId: output.activeWorkspace,
+            },
             monitorIds:
                 displayLayout?.outputs.map((output) => output.monitorId) ??
                 windows

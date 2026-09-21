@@ -17,7 +17,7 @@ impl WindowId {
         Self(raw)
     }
 
-    #[cfg(feature = "xwayland")]
+    #[cfg(any(feature = "flutter", feature = "xwayland"))]
     pub(super) const fn get(self) -> u64 {
         self.0
     }
@@ -76,6 +76,11 @@ impl WindowRegistry {
 
     pub(super) fn values_mut(&mut self) -> impl Iterator<Item = &mut WindowRecord> {
         self.windows.values_mut()
+    }
+
+    #[cfg(feature = "flutter")]
+    pub(super) fn iter(&self) -> impl Iterator<Item = (WindowId, &WindowRecord)> {
+        self.windows.iter().map(|(&id, record)| (id, record))
     }
 }
 
