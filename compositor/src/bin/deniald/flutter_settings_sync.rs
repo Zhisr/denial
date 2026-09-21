@@ -1502,6 +1502,9 @@ pub(super) fn apply_resident_output_geometry(
     }
     events.output_control_dirty = true;
     *topology = staged_topology;
+    if let Some(frontend) = events.wayland.as_mut() {
+        frontend.set_scrolling_layout_axes(&staged_configuration.scrolling_layout_axes);
+    }
     *configuration = staged_configuration;
     info!(
         outputs = scanouts.len(),

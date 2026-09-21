@@ -1006,8 +1006,28 @@ pub(super) fn activate_client_route(
     serial: Serial,
 ) -> bool {
     let Some(target_window) = route.window.as_ref() else {
+        if let Some(layer_root) = route.layer_root.as_ref() {
+            let keyboard_focus = state
+                .wayland
+                .as_ref()
+                .expect("missing Wayland frontend")
+                .layer_keyboard_focus_for_surface(layer_root);
+            if let Some(keyboard_focus) = keyboard_focus {
+                let keyboard = state
+                    .wayland
+                    .as_ref()
+                    .expect("missing Wayland frontend")
+                    .seat
+                    .get_keyboard()
+                    .expect("seat has no keyboard");
+                if keyboard.current_focus().as_ref() != Some(&keyboard_focus) {
+                    request_keyboard_focus(state, &keyboard, Some(keyboard_focus), serial);
+                }
+            }
+        }
         // Input-method candidate surfaces receive pointer/touch input without
-        // stealing the keyboard focus from the editor they serve.
+        // stealing the keyboard focus from the editor they serve. Layer-shell
+        // surfaces use their committed keyboard-interactivity mode above.
         return false;
     };
     let keyboard = state
@@ -1062,24 +1082,24 @@ pub(super) fn release_client_geometry_for_shell_grab(
     let target = {
         let frontend = state.wayland.as_mut().expect("missing Wayland frontend");
         let root = frontend.window_root_surface(window);
-        let restore = root.as_ref().and_then(|surface| {
-            frontend
-                .shell_fullscreen_restore_geometries
-                .remove(&surface.id())
+        let (restore, shell_owned) = root.as_ref().map_or((None, false), |surface| {
+            let surface_id = surface.id();
+            let presentation = frontend.take_shell_presentation(&surface_id);
+            let shell_owned = presentation.is_some();
+            let restore = presentation
+                .map(|presentation| presentation.normal_geometry())
                 .or_else(|| {
                     frontend
-                        .shell_maximize_restore_geometries
-                        .remove(&surface.id())
+                        .window_record_for_surface(&surface_id)
+                        .and_then(|record| record.layout_restore_geometry)
                 })
-                .or_else(|| frontend.restore_window_geometries.remove(&surface.id()))
+                .or_else(|| frontend.take_restore_geometry(&surface_id));
+            (restore, shell_owned)
         });
-        let shell_locked = root
-            .as_ref()
-            .is_some_and(|root| frontend.shell_fullscreen_locks.remove(&root.id()));
         if let Some(restore) = restore {
             frontend.set_window_geometry_target(window, restore);
             Some(restore)
-        } else if client_constraints_cleared || shell_locked {
+        } else if client_constraints_cleared || shell_owned {
             Some(frontend.window_geometry_target(window))
         } else {
             None
@@ -1341,6 +1361,8 @@ pub(super) fn process_wayland_keyboard_transition(
     key_state: KeyState,
     time: u32,
 ) {
+    #[cfg(not(feature = "flutter"))]
+    focus_exclusive_layer_for_keyboard_event(state);
     let keyboard = state
         .wayland
         .as_ref()

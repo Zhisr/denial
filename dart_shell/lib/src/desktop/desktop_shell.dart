@@ -943,7 +943,9 @@ class _DesktopShellState extends ConsumerState<DesktopShell> {
               panelDurationScale: animations.durationScale,
               windowSwitcher: windowSwitcher,
               displayLayout: displayLayout,
-              frameTimingOptions: ref.watch(shellFrameTimingOptionsProvider),
+              showFrameTimingOverlay: ref.watch(
+                shellFrameTimingOverlayProvider,
+              ),
               wallpaperSelectorVisible: wallpaperSelectorVisible,
               shellOutputRect: shellOutput?.logicalRect,
               mainOutputRect: mainOutput?.logicalRect,

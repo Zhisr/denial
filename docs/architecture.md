@@ -1,16 +1,16 @@
 # Denial architecture
 
 Denial is a Flutter-native Wayland compositor. The native compositor is Rust;
-Smithay supplies the Wayland, DRM/KMS, libinput, libseat, udev and Xwayland
-foundations, while Flutter owns the shell scene that combines client surfaces
-with native UI.
+Smithay supplies the Wayland, DRM/KMS, libinput, libseat and udev foundations,
+plus an optional Xwayland integration. Flutter owns the shell scene that
+combines client surfaces with native UI.
 
 ## Runtime shape
 
 ```text
 deniald
   Rust compositor
-    Smithay Wayland frontend and Xwayland
+    Smithay Wayland frontend and optional Xwayland
     libseat/libinput/udev session and input
     GBM/EGL rendering and Volition atomic DRM/KMS presentation
     window, focus, grab and buffer lifetime state

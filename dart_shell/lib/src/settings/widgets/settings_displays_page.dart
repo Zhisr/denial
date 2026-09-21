@@ -41,6 +41,10 @@ const settingsPrimaryDisplaySelectorKey = ValueKey<String>(
 const settingsVariableRefreshRateToggleKey = ValueKey<String>(
   'settings-variable-refresh-rate-toggle',
 );
+ValueKey<String> settingsScrollingLayoutAxisSelectorKey(String outputName) =>
+    ValueKey<String>('settings-scrolling-layout-axis-$outputName');
+ValueKey<String> settingsDisplayEnabledToggleKey(String outputName) =>
+    ValueKey<String>('settings-display-enabled-$outputName');
 const settingsDisplayScaleFieldKey = ValueKey<String>(
   'settings-display-scale-field',
 );
@@ -297,6 +301,9 @@ class _OutputConfigurationBody extends StatelessWidget {
       );
     }
     final selected = state.selectedOutput!;
+    final enabledOutputCount = state.draftOutputs
+        .where((output) => output.enabled)
+        .length;
     return FocusTraversalGroup(
       policy: OrderedTraversalPolicy(),
       child: Column(
@@ -323,11 +330,16 @@ class _OutputConfigurationBody extends StatelessWidget {
             output: selected,
             capabilities: state.configuration!.capabilities,
             enabled: !state.applying,
+            canChangeEnabled: !selected.enabled || enabledOutputCount > 1,
+            onEnabledChanged: (value) =>
+                controller.setEnabled(selected.name, value),
             onModeChanged: (mode) => controller.setMode(selected.name, mode),
             onScaleChanged: (scale) =>
                 controller.setScale(selected.name, scale),
             onTransformChanged: (transform) =>
                 controller.setTransform(selected.name, transform),
+            onScrollingLayoutAxisChanged: (axis) =>
+                controller.setScrollingLayoutAxis(selected.name, axis),
             onAdaptiveSyncChanged: (value) =>
                 controller.setAdaptiveSync(selected.name, value),
           ),
@@ -863,6 +875,9 @@ class _MonitorTileState extends State<_MonitorTile> {
       button: true,
       selected: widget.selected,
       label: context.l10n.settingsMonitorSemantics(widget.output.name),
+      value: widget.output.enabled
+          ? context.l10n.commonOn
+          : context.l10n.commonOff,
       hint: context.l10n.settingsMonitorDragHint,
       child: FocusableActionDetector(
         mouseCursor: ShellMouseCursors.move,
@@ -945,27 +960,33 @@ class _MonitorTileState extends State<_MonitorTile> {
                 width: widget.selected ? 2 : 1,
               ),
             ),
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.center,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Icon(
-                    Icons.monitor_rounded,
-                    size: 21,
-                    color: context.shellColors.textPrimary,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(widget.output.name, style: ShellText.cardTitle),
-                  Text(
-                    '${mode.width} × ${mode.height}',
-                    style: ShellText.base.copyWith(
-                      color: context.shellColors.textTertiary,
-                      fontSize: 10,
+            child: AnimatedOpacity(
+              duration: Motion.tile,
+              opacity: widget.output.enabled ? 1 : 0.46,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.center,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Icon(
+                      widget.output.enabled
+                          ? Icons.monitor_rounded
+                          : Icons.monitor_outlined,
+                      size: 21,
+                      color: context.shellColors.textPrimary,
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 4),
+                    Text(widget.output.name, style: ShellText.cardTitle),
+                    Text(
+                      '${mode.width} × ${mode.height}',
+                      style: ShellText.base.copyWith(
+                        color: context.shellColors.textTertiary,
+                        fontSize: 10,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -987,18 +1008,24 @@ class _MonitorControls extends StatelessWidget {
     required this.output,
     required this.capabilities,
     required this.enabled,
+    required this.canChangeEnabled,
+    required this.onEnabledChanged,
     required this.onModeChanged,
     required this.onScaleChanged,
     required this.onTransformChanged,
+    required this.onScrollingLayoutAxisChanged,
     required this.onAdaptiveSyncChanged,
   });
 
   final DenialOutput output;
   final DenialOutputCapabilities capabilities;
   final bool enabled;
+  final bool canChangeEnabled;
+  final ValueChanged<bool> onEnabledChanged;
   final ValueChanged<DenialOutputMode> onModeChanged;
   final ValueChanged<double> onScaleChanged;
   final ValueChanged<DenialOutputTransform> onTransformChanged;
+  final ValueChanged<DenialScrollingLayoutAxis> onScrollingLayoutAxisChanged;
   final ValueChanged<bool> onAdaptiveSyncChanged;
 
   @override
@@ -1016,6 +1043,7 @@ class _MonitorControls extends StatelessWidget {
               mode.height == selectedResolution.height,
         )
         .toList(growable: false);
+    final configurationEnabled = enabled && output.enabled;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
@@ -1028,7 +1056,16 @@ class _MonitorControls extends StatelessWidget {
             fontSize: 11,
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
+        SettingsToggle(
+          key: settingsDisplayEnabledToggleKey(output.name),
+          label: context.l10n.settingsDisplayEnabled,
+          description: context.l10n.settingsDisplayEnabledDescription,
+          value: output.enabled,
+          enabled: enabled && capabilities.enable && canChangeEnabled,
+          onChanged: onEnabledChanged,
+        ),
+        const SizedBox(height: 16),
         LayoutBuilder(
           builder: (context, constraints) {
             final compact = constraints.maxWidth < 620;
@@ -1039,7 +1076,7 @@ class _MonitorControls extends StatelessWidget {
                 ),
                 label: context.l10n.settingsDisplayResolution,
                 value: selectedResolution,
-                enabled: enabled && capabilities.mode,
+                enabled: configurationEnabled && capabilities.mode,
                 choices: <SettingsChoice<_Resolution>>[
                   for (final resolution in resolutions)
                     SettingsChoice<_Resolution>(
@@ -1077,7 +1114,7 @@ class _MonitorControls extends StatelessWidget {
                 ),
                 label: context.l10n.settingsDisplayRefreshRate,
                 value: selectedMode,
-                enabled: enabled && capabilities.mode,
+                enabled: configurationEnabled && capabilities.mode,
                 choices: <SettingsChoice<DenialOutputMode>>[
                   for (final mode in refreshModes)
                     SettingsChoice<DenialOutputMode>(
@@ -1093,7 +1130,7 @@ class _MonitorControls extends StatelessWidget {
                 ),
                 label: context.l10n.settingsDisplayRotation,
                 value: output.transform,
-                enabled: enabled && capabilities.transform,
+                enabled: configurationEnabled && capabilities.transform,
                 choices: <SettingsChoice<DenialOutputTransform>>[
                   for (final transform in _rotations)
                     SettingsChoice<DenialOutputTransform>(
@@ -1141,12 +1178,29 @@ class _MonitorControls extends StatelessWidget {
                 SettingsDisplayScaleControl(
                   key: ValueKey<String>('${output.name}-scale'),
                   scale: output.scale,
-                  enabled: enabled && capabilities.scale,
+                  enabled: configurationEnabled && capabilities.scale,
                   onChanged: onScaleChanged,
                 ),
               ],
             );
           },
+        ),
+        const SizedBox(height: 14),
+        SettingsSelect<DenialScrollingLayoutAxis>(
+          key: settingsScrollingLayoutAxisSelectorKey(output.name),
+          label: context.l10n.settingsDisplayScrollingLayoutAxis,
+          description:
+              context.l10n.settingsDisplayScrollingLayoutAxisDescription,
+          value: output.scrollingLayoutAxis,
+          enabled: configurationEnabled && capabilities.scrollingLayoutAxis,
+          choices: <SettingsChoice<DenialScrollingLayoutAxis>>[
+            for (final axis in DenialScrollingLayoutAxis.values)
+              SettingsChoice<DenialScrollingLayoutAxis>(
+                axis,
+                _scrollingLayoutAxisLabel(context, axis),
+              ),
+          ],
+          onChanged: onScrollingLayoutAxisChanged,
         ),
         if (capabilities.adaptiveSync &&
             output.adaptiveSyncSupported) ...<Widget>[
@@ -1157,7 +1211,7 @@ class _MonitorControls extends StatelessWidget {
             description:
                 context.l10n.settingsDisplayVariableRefreshRateDescription,
             value: output.adaptiveSync,
-            enabled: enabled,
+            enabled: configurationEnabled,
             onChanged: onAdaptiveSyncChanged,
           ),
         ],
@@ -1165,6 +1219,18 @@ class _MonitorControls extends StatelessWidget {
     );
   }
 }
+
+String _scrollingLayoutAxisLabel(
+  BuildContext context,
+  DenialScrollingLayoutAxis axis,
+) => switch (axis) {
+  DenialScrollingLayoutAxis.auto =>
+    context.l10n.settingsDisplayScrollingLayoutAxisAuto,
+  DenialScrollingLayoutAxis.horizontal =>
+    context.l10n.settingsDisplayScrollingLayoutAxisHorizontal,
+  DenialScrollingLayoutAxis.vertical =>
+    context.l10n.settingsDisplayScrollingLayoutAxisVertical,
+};
 
 class SettingsDisplayScaleControl extends StatefulWidget {
   const SettingsDisplayScaleControl({

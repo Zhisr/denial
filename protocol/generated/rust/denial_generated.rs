@@ -4072,6 +4072,7 @@ impl<'a> Window<'a> {
   pub const VT_MINIMIZED: flatbuffers::VOffsetT = 80;
   pub const VT_FULLSCREEN: flatbuffers::VOffsetT = 82;
   pub const VT_MAXIMIZED: flatbuffers::VOffsetT = 84;
+  pub const VT_TRANSIENT_PARENT_ID: flatbuffers::VOffsetT = 86;
 
   #[inline]
   pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
@@ -4083,6 +4084,7 @@ impl<'a> Window<'a> {
     args: &'args WindowArgs<'args>
   ) -> flatbuffers::WIPOffset<Window<'bldr>> {
     let mut builder = WindowBuilder::new(_fbb);
+    builder.add_transient_parent_id(args.transient_parent_id);
     builder.add_workspace_id(args.workspace_id);
     builder.add_content_height(args.content_height);
     builder.add_content_width(args.content_width);
@@ -4415,6 +4417,13 @@ impl<'a> Window<'a> {
     // which contains a valid value in this slot
     unsafe { self._tab.get::<bool>(Window::VT_MAXIMIZED, Some(false)).unwrap()}
   }
+  #[inline]
+  pub fn transient_parent_id(&self) -> u64 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<u64>(Window::VT_TRANSIENT_PARENT_ID, Some(0)).unwrap()}
+  }
 }
 
 impl flatbuffers::Verifiable for Window<'_> {
@@ -4465,6 +4474,7 @@ impl flatbuffers::Verifiable for Window<'_> {
      .visit_field::<bool>("minimized", Self::VT_MINIMIZED, false)?
      .visit_field::<bool>("fullscreen", Self::VT_FULLSCREEN, false)?
      .visit_field::<bool>("maximized", Self::VT_MAXIMIZED, false)?
+     .visit_field::<u64>("transient_parent_id", Self::VT_TRANSIENT_PARENT_ID, false)?
      .finish();
     Ok(())
   }
@@ -4511,6 +4521,7 @@ pub struct WindowArgs<'a> {
     pub minimized: bool,
     pub fullscreen: bool,
     pub maximized: bool,
+    pub transient_parent_id: u64,
 }
 impl<'a> Default for WindowArgs<'a> {
   #[inline]
@@ -4557,6 +4568,7 @@ impl<'a> Default for WindowArgs<'a> {
       minimized: false,
       fullscreen: false,
       maximized: false,
+      transient_parent_id: 0,
     }
   }
 }
@@ -4731,6 +4743,10 @@ impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> WindowBuilder<'a, 'b, A> {
     self.fbb_.push_slot::<bool>(Window::VT_MAXIMIZED, maximized, false);
   }
   #[inline]
+  pub fn add_transient_parent_id(&mut self, transient_parent_id: u64) {
+    self.fbb_.push_slot::<u64>(Window::VT_TRANSIENT_PARENT_ID, transient_parent_id, 0);
+  }
+  #[inline]
   pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> WindowBuilder<'a, 'b, A> {
     let start = _fbb.start_table();
     WindowBuilder {
@@ -4789,6 +4805,7 @@ impl core::fmt::Debug for Window<'_> {
       ds.field("minimized", &self.minimized());
       ds.field("fullscreen", &self.fullscreen());
       ds.field("maximized", &self.maximized());
+      ds.field("transient_parent_id", &self.transient_parent_id());
       ds.finish()
   }
 }
@@ -4929,6 +4946,7 @@ impl<'a> DisplayOutput<'a> {
   pub const VT_SOURCE_RECT: flatbuffers::VOffsetT = 12;
   pub const VT_SCALE: flatbuffers::VOffsetT = 14;
   pub const VT_REFRESH_RATE: flatbuffers::VOffsetT = 16;
+  pub const VT_ACTIVE_WORKSPACE: flatbuffers::VOffsetT = 18;
 
   #[inline]
   pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
@@ -4943,6 +4961,7 @@ impl<'a> DisplayOutput<'a> {
     builder.add_refresh_rate(args.refresh_rate);
     builder.add_scale(args.scale);
     builder.add_monitor_id(args.monitor_id);
+    builder.add_active_workspace(args.active_workspace);
     if let Some(x) = args.source_rect { builder.add_source_rect(x); }
     if let Some(x) = args.pixel_size { builder.add_pixel_size(x); }
     if let Some(x) = args.logical_rect { builder.add_logical_rect(x); }
@@ -5000,6 +5019,13 @@ impl<'a> DisplayOutput<'a> {
     // which contains a valid value in this slot
     unsafe { self._tab.get::<f64>(DisplayOutput::VT_REFRESH_RATE, Some(60.0)).unwrap()}
   }
+  #[inline]
+  pub fn active_workspace(&self) -> u32 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<u32>(DisplayOutput::VT_ACTIVE_WORKSPACE, Some(1)).unwrap()}
+  }
 }
 
 impl flatbuffers::Verifiable for DisplayOutput<'_> {
@@ -5016,6 +5042,7 @@ impl flatbuffers::Verifiable for DisplayOutput<'_> {
      .visit_field::<WireRect>("source_rect", Self::VT_SOURCE_RECT, false)?
      .visit_field::<f64>("scale", Self::VT_SCALE, false)?
      .visit_field::<f64>("refresh_rate", Self::VT_REFRESH_RATE, false)?
+     .visit_field::<u32>("active_workspace", Self::VT_ACTIVE_WORKSPACE, false)?
      .finish();
     Ok(())
   }
@@ -5028,6 +5055,7 @@ pub struct DisplayOutputArgs<'a> {
     pub source_rect: Option<&'a WireRect>,
     pub scale: f64,
     pub refresh_rate: f64,
+    pub active_workspace: u32,
 }
 impl<'a> Default for DisplayOutputArgs<'a> {
   #[inline]
@@ -5040,6 +5068,7 @@ impl<'a> Default for DisplayOutputArgs<'a> {
       source_rect: None,
       scale: 1.0,
       refresh_rate: 60.0,
+      active_workspace: 1,
     }
   }
 }
@@ -5078,6 +5107,10 @@ impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> DisplayOutputBuilder<'a, 'b, A>
     self.fbb_.push_slot::<f64>(DisplayOutput::VT_REFRESH_RATE, refresh_rate, 60.0);
   }
   #[inline]
+  pub fn add_active_workspace(&mut self, active_workspace: u32) {
+    self.fbb_.push_slot::<u32>(DisplayOutput::VT_ACTIVE_WORKSPACE, active_workspace, 1);
+  }
+  #[inline]
   pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> DisplayOutputBuilder<'a, 'b, A> {
     let start = _fbb.start_table();
     DisplayOutputBuilder {
@@ -5102,6 +5135,7 @@ impl core::fmt::Debug for DisplayOutput<'_> {
       ds.field("source_rect", &self.source_rect());
       ds.field("scale", &self.scale());
       ds.field("refresh_rate", &self.refresh_rate());
+      ds.field("active_workspace", &self.active_workspace());
       ds.finish()
   }
 }

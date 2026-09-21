@@ -623,29 +623,6 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String frameAppRendering(String title) {
-    return '应用 · $title · 渲染';
-  }
-
-  @override
-  String frameAppWaiting(String title) {
-    return '应用 · $title · 等待';
-  }
-
-  @override
-  String frameImportedStats(
-    String average,
-    String maximum,
-    int overBudget,
-    int samples,
-  ) {
-    return '平均 $average  最大 $maximum  超预算 $overBudget  样本 $samples';
-  }
-
-  @override
-  String get frameImportedStatsUnavailable => '平均 --.-  最大 --.-  超预算 -  样本 -';
-
-  @override
   String frameMilliseconds(String value) {
     return '约 $value 毫秒';
   }
@@ -1856,6 +1833,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsDisplayArrangementTitle => '显示器配置';
 
   @override
+  String get settingsDisplayEnabled => '使用此显示器';
+
+  @override
+  String get settingsDisplayEnabledDescription => '将此显示器纳入桌面。必须至少启用一个显示器。';
+
+  @override
   String get settingsDisplayBrightnessDescription => '调节主显示器亮度。';
 
   @override
@@ -1896,7 +1879,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get settingsDisplayPrimaryHint =>
-      'Shell 界面会在主显示器上打开。自动模式会使用刷新率最高的已连接显示器。';
+      'Shell 界面会在主显示器上打开。自动模式会使用刷新率最高的已启用显示器。';
 
   @override
   String get settingsDisplayRefreshRate => '刷新率';
@@ -1911,13 +1894,29 @@ class AppLocalizationsZh extends AppLocalizations {
   String get settingsDisplayRotationNormal => '横向';
 
   @override
-  String get settingsDisplayRotation90 => '顺时针 90°';
+  String get settingsDisplayRotation90 => '逆时针 90°';
 
   @override
   String get settingsDisplayRotation180 => '倒置';
 
   @override
-  String get settingsDisplayRotation270 => '逆时针 90°';
+  String get settingsDisplayRotation270 => '顺时针 90°';
+
+  @override
+  String get settingsDisplayScrollingLayoutAxis => '滚动布局轴';
+
+  @override
+  String get settingsDisplayScrollingLayoutAxisDescription =>
+      '选择滚动窗口在此显示器上的排列方向。';
+
+  @override
+  String get settingsDisplayScrollingLayoutAxisAuto => '自动（跟随旋转）';
+
+  @override
+  String get settingsDisplayScrollingLayoutAxisHorizontal => '横向';
+
+  @override
+  String get settingsDisplayScrollingLayoutAxisVertical => '纵向';
 
   @override
   String get settingsDisplayScale => '缩放';
@@ -2483,7 +2482,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get settingsWindowLayoutDescription =>
-      '堆叠允许窗口相互重叠。平铺动态划分桌面。滚动平铺将窗口排列成跟随焦点的长带；显示器旋转 90° 或 270° 时，长带会改为纵向。';
+      '堆叠允许窗口相互重叠。平铺动态划分桌面。滚动平铺将窗口排列成跟随焦点的长带；其方向可按显示器配置，默认跟随显示器旋转。';
 
   @override
   String get settingsWindowLayoutDwindle => '平铺';

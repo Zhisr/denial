@@ -145,6 +145,7 @@ class DenialWindow {
     required this.geometryHeight,
     required this.monitorId,
     this.workspaceId = 1,
+    this.transientParentObjectId,
     this.minimized = false,
     this.fullscreen = false,
     this.maximized = false,
@@ -188,6 +189,7 @@ class DenialWindow {
   final double geometryHeight;
   final int monitorId;
   final int workspaceId;
+  final int? transientParentObjectId;
   final bool minimized;
   final bool fullscreen;
   final bool maximized;
@@ -365,6 +367,7 @@ class DenialWindow {
         other.appId == appId &&
         other.monitorId == monitorId &&
         other.workspaceId == workspaceId &&
+        other.transientParentObjectId == transientParentObjectId &&
         other.minimized == minimized &&
         other.fullscreen == fullscreen &&
         other.maximized == maximized &&
@@ -403,6 +406,7 @@ class DenialWindow {
         other.geometryHeight == geometryHeight &&
         other.monitorId == monitorId &&
         other.workspaceId == workspaceId &&
+        other.transientParentObjectId == transientParentObjectId &&
         other.minimized == minimized &&
         other.fullscreen == fullscreen &&
         other.maximized == maximized &&
@@ -454,6 +458,7 @@ class DenialWindow {
     geometryHeight,
     monitorId,
     workspaceId,
+    transientParentObjectId,
     minimized,
     fullscreen,
     maximized,

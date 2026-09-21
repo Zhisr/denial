@@ -72,7 +72,7 @@ impl FlutterRuntime {
 
     pub fn drain_xembed_tray_commands(
         &mut self,
-    ) -> impl Iterator<Item = crate::xembed_tray::XEmbedTrayCommand> + '_ {
+    ) -> impl Iterator<Item = crate::xembed_tray_protocol::XEmbedTrayCommand> + '_ {
         self.wire.drain_xembed_tray_commands()
     }
 
@@ -192,10 +192,26 @@ impl FlutterRuntime {
             .as_ref()
             .expect("Flutter runtime is shutting down")
             .engine();
+        if action == wire::ShellAction::WorkspaceChanged {
+            let monitor_id = monitor_id.ok_or("workspace action has no monitor")?;
+            let workspace_id = workspace_id.ok_or("workspace action has no workspace")?;
+            let layout = self
+                .wire
+                .update_active_workspace(monitor_id, workspace_id)?;
+            engine.send_platform_message(wire::TO_FLUTTER_CHANNEL, layout)?;
+        }
         let event = self
             .wire
             .encode_shell_action(action, monitor_id, workspace_id)?;
         engine.send_platform_message(wire::TO_FLUTTER_CHANNEL, event)?;
+        Ok(())
+    }
+
+    pub fn set_active_workspaces(
+        &mut self,
+        workspaces: impl IntoIterator<Item = (i64, u8)>,
+    ) -> Result<(), Box<dyn Error>> {
+        self.wire.set_active_workspaces(workspaces)?;
         Ok(())
     }
 
@@ -323,7 +339,7 @@ impl FlutterRuntime {
 
     pub fn send_xembed_tray_event(
         &mut self,
-        event: &crate::xembed_tray::XEmbedTrayEvent,
+        event: &crate::xembed_tray_protocol::XEmbedTrayEvent,
     ) -> Result<(), Box<dyn Error>> {
         let engine = self
             .host

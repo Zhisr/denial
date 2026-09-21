@@ -78,15 +78,17 @@ compositor/target/release/deniald \
   --wayland --flutter-bundle /path/to/denial/bundle
 ```
 
-The `flutter` feature includes `kms`; a binary built with only `kms` cannot
-load the Flutter bundle. While that session is running,
+The `flutter` feature includes `kms`; `xwayland` is enabled by default and adds
+the Smithay XWM integration plus the optional `x11rb` tray and XIM support. A
+binary built with only `kms` cannot load the Flutter bundle. While that session is running,
 `compositor/target/release/denialctl status` inspects its output and Flutter UI
 state without depending on the shell.
 
-The KMS compositor starts a rootless Xwayland server and exports its dynamic
-`DISPLAY` alongside `WAYLAND_DISPLAY`. Install the system `Xwayland` executable
-to run X11-only applications such as Steam; the development session fails
-early with a clear error when it is absent.
+When built with the `xwayland` feature, the KMS compositor starts a rootless
+Xwayland server and exports its dynamic `DISPLAY` alongside `WAYLAND_DISPLAY`.
+Pass `--no-xwayland` to suppress that server for one session. A build with
+`--no-default-features --features flutter` contains neither Smithay's Xwayland
+feature nor the `x11rb` dependency and never publishes `DISPLAY`.
 
 Denial remembers the last normal rectangle and maximized/fullscreen state of
 each application and restores them before that application's first frame is
@@ -105,9 +107,13 @@ new window splits the focused tile, each parent chooses its split direction
 from its current aspect ratio, and removing a window collapses the empty
 branch. Scrolling arranges tiles along a focus-following strip. Hold SUPER and
 turn the mouse wheel to move along that strip; the Layout page controls the
-wheel speed and whether wheel-up moves left or right. Each scrolling column
-uses the same directional split behavior as normal tiling, so dropping a tile
-on another tile's right edge creates a horizontal split inside that column.
+wheel speed and whether wheel-up moves left or right. The Displays page chooses
+an automatic, horizontal, or vertical scrolling axis for each output.
+Automatic preserves the transform-following behavior: horizontal for
+unrotated or half-turned outputs, and vertical for quarter-turned outputs. Each
+scrolling column uses the same directional split behavior as normal tiling, so
+dropping a tile on another tile's right edge creates a horizontal split inside
+that column.
 The existing maximize padding is also used as the gap between sibling tiles.
 Transient dialogs, fixed-size toplevels, auxiliary X11 window types, and
 override-redirect X11 surfaces remain floating. In the scrolling layout,
@@ -165,9 +171,12 @@ to choose the display that owns primary shell surfaces and the render ticker;
 when omitted or temporarily disconnected, Denial uses the enabled output with
 the highest refresh rate. Use
 `transform=NAME,normal|90|180|270|flipped|flipped-90|flipped-180|flipped-270`
-for rotation and reflection. Add `vrr=NAME` for each output that should use
-variable refresh rate, or `disabled=NAME` to leave a connected output outside
-the KMS and Wayland topology. Flutter projects transformed outputs directly
+for rotation and reflection; angles follow Wayland's counterclockwise
+convention. Add `vrr=NAME` for each output that should use variable refresh
+rate. Use `scrolling_axis=NAME,auto|horizontal|vertical` to choose the scrolling
+layout axis per output; an omitted or `auto` value follows the output transform.
+Use `disabled=NAME` to leave a connected output outside the KMS and
+Wayland topology. Flutter projects transformed outputs directly
 into their native, unrotated scanout buffers; the KMS mode and primary-plane
 rotation remain unchanged, including for 90/270-degree transforms. Denial
 validates mode and VRR changes with an atomic `TEST_ONLY` commit before
@@ -190,6 +199,7 @@ Command-line position assignments override the file:
 primary=DP-5
 DP-5=0,0,200
 transform=DP-5,90
+scrolling_axis=DP-5,horizontal
 DP-4=2560,0,180
 vrr=DP-4
 disabled=HDMI-A-1
@@ -213,7 +223,8 @@ compositor/target/release/deniald \
 ```
 
 With `--wayland`, the process advertises physical `wl_output` globals, XDG
-shell, SHM, `wp_viewporter` crop-and-scale support, `linux-dmabuf` v4 feedback
+shell, `xdg-foreign-v2` cross-client parent relationships, SHM,
+`wp_viewporter` crop-and-scale support, `linux-dmabuf` v4 feedback
 for the EGL render node, and `zwlr-output-power-management-v1`. It advertises
 `wlr-gamma-control-unstable-v1` for wl-gammarelay-rs, gammastep, wlsunset, and
 other gamma-ramp clients. Denial's per-output software dimmer is composed with

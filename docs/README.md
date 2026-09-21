@@ -45,6 +45,7 @@ The versioned FlatBuffers schema and generated bindings remain under
 - [Release-signing operations](packaging/arch/SIGNING.md)
 - [Package validation evidence](packaging/arch/VALIDATION.md)
 - [Alpine Linux 3.24 runtime validation](../packaging/alpine/VALIDATION.md)
+- [openSUSE Tumbleweed runtime validation](../packaging/opensuse/VALIDATION.md)
 - [Trusted-branch candidate validation](packaging/arch/BRANCH_VALIDATION.md)
 
 ## Colocated references

@@ -925,46 +925,6 @@
       }
     }
   },
-  "frameAppRendering": "APP · {title} · RENDER",
-  "@frameAppRendering": {
-    "description": "English UI text for frameAppRendering.",
-    "placeholders": {
-      "title": {
-        "type": "String"
-      }
-    }
-  },
-  "frameAppWaiting": "APP · {title} · WAIT",
-  "@frameAppWaiting": {
-    "description": "English UI text for frameAppWaiting.",
-    "placeholders": {
-      "title": {
-        "type": "String"
-      }
-    }
-  },
-  "frameImportedStats": "AVG {average}  MAX {maximum}  OVER {overBudget}  N {samples}",
-  "@frameImportedStats": {
-    "description": "English UI text for frameImportedStats.",
-    "placeholders": {
-      "average": {
-        "type": "String"
-      },
-      "maximum": {
-        "type": "String"
-      },
-      "overBudget": {
-        "type": "int"
-      },
-      "samples": {
-        "type": "int"
-      }
-    }
-  },
-  "frameImportedStatsUnavailable": "AVG --.-  MAX --.-  OVER -  N -",
-  "@frameImportedStatsUnavailable": {
-    "description": "English UI text for frameImportedStatsUnavailable."
-  },
   "frameMilliseconds": "~{value} ms",
   "@frameMilliseconds": {
     "description": "English UI text for frameMilliseconds.",
@@ -2688,6 +2648,14 @@
   "@settingsDisplayArrangementTitle": {
     "description": "Heading for output modes, scale, rotation, and arrangement."
   },
+  "settingsDisplayEnabled": "Use this display",
+  "@settingsDisplayEnabled": {
+    "description": "Label for including a connected monitor in the desktop."
+  },
+  "settingsDisplayEnabledDescription": "Include this monitor in the desktop. At least one display must remain enabled.",
+  "@settingsDisplayEnabledDescription": {
+    "description": "Explanation shown below the monitor enable toggle."
+  },
   "settingsDisplayBrightnessDescription": "Adjust the main display brightness.",
   "@settingsDisplayBrightnessDescription": {
     "description": "English UI text for settingsDisplayBrightnessDescription."
@@ -2750,7 +2718,7 @@
   "@settingsDisplayPrimaryAutomatic": {
     "description": "Choice that lets the compositor select the primary display by refresh rate."
   },
-  "settingsDisplayPrimaryHint": "Shell surfaces open on the primary display. Automatic uses the connected display with the highest refresh rate.",
+  "settingsDisplayPrimaryHint": "Shell surfaces open on the primary display. Automatic uses the enabled display with the highest refresh rate.",
   "@settingsDisplayPrimaryHint": {
     "description": "Explains the primary display selector and its automatic fallback."
   },
@@ -2770,7 +2738,7 @@
   "@settingsDisplayRotationNormal": {
     "description": "Label for an unrotated monitor."
   },
-  "settingsDisplayRotation90": "90° clockwise",
+  "settingsDisplayRotation90": "90° counterclockwise",
   "@settingsDisplayRotation90": {
     "description": "Label for a monitor rotated by 90 degrees."
   },
@@ -2778,9 +2746,29 @@
   "@settingsDisplayRotation180": {
     "description": "Label for a monitor rotated by 180 degrees."
   },
-  "settingsDisplayRotation270": "90° counterclockwise",
+  "settingsDisplayRotation270": "90° clockwise",
   "@settingsDisplayRotation270": {
     "description": "Label for a monitor rotated by 270 degrees."
+  },
+  "settingsDisplayScrollingLayoutAxis": "Scrolling layout axis",
+  "@settingsDisplayScrollingLayoutAxis": {
+    "description": "Label for choosing the scrolling window layout axis on one monitor."
+  },
+  "settingsDisplayScrollingLayoutAxisDescription": "Choose how scrolling windows are arranged on this display.",
+  "@settingsDisplayScrollingLayoutAxisDescription": {
+    "description": "Explanation shown beside the per-monitor scrolling layout axis selector."
+  },
+  "settingsDisplayScrollingLayoutAxisAuto": "Automatic (follows rotation)",
+  "@settingsDisplayScrollingLayoutAxisAuto": {
+    "description": "Choice that derives the scrolling layout axis from the monitor rotation."
+  },
+  "settingsDisplayScrollingLayoutAxisHorizontal": "Horizontal",
+  "@settingsDisplayScrollingLayoutAxisHorizontal": {
+    "description": "Choice that forces a horizontal scrolling window strip."
+  },
+  "settingsDisplayScrollingLayoutAxisVertical": "Vertical",
+  "@settingsDisplayScrollingLayoutAxisVertical": {
+    "description": "Choice that forces a vertical scrolling window strip."
   },
   "settingsDisplayScale": "Scale",
   "@settingsDisplayScale": {
@@ -3552,7 +3540,7 @@
   "@settingsLayoutTitle": {
     "description": "English UI text for settingsLayoutTitle."
   },
-  "settingsWindowLayoutDescription": "Stacking lets windows overlap. Tiling divides the desktop dynamically. Scrolling follows focus along a strip that turns vertical with a quarter-turned monitor.",
+  "settingsWindowLayoutDescription": "Stacking lets windows overlap. Tiling divides the desktop dynamically. Scrolling follows focus along a strip; its axis is configured per display and follows rotation by default.",
   "@settingsWindowLayoutDescription": {
     "description": "Explains the available desktop window layouts."
   },

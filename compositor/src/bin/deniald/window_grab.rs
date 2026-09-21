@@ -13,6 +13,7 @@ use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
 use smithay::reexports::wayland_server::Resource;
 use smithay::reexports::wayland_server::protocol::wl_surface::WlSurface;
 use smithay::utils::{Logical, Point, Rectangle, Serial, Size};
+#[cfg(feature = "xwayland")]
 use smithay::xwayland::xwm::ResizeEdge as X11ResizeEdge;
 
 use super::RuntimeState;
@@ -749,6 +750,7 @@ impl ResizeEdges {
         Some(edges)
     }
 
+    #[cfg(feature = "xwayland")]
     pub(super) const fn from_x11(edge: X11ResizeEdge) -> Self {
         match edge {
             X11ResizeEdge::Top => Self::new(true, false, false, false),

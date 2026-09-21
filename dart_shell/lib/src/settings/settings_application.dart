@@ -562,7 +562,9 @@ class _SettingsDisplaysBody extends ConsumerWidget {
             busy: state.applying,
             onKeep: () => unawaited(controller.keepChanges()),
             onRevert: () => unawaited(controller.rollbackChanges()),
-            onExpired: () => unawaited(controller.refresh()),
+            onExpired: () => unawaited(
+              controller.refreshAfterConfirmationExpiry(confirmation.token),
+            ),
           ),
       ],
     );

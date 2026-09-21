@@ -137,6 +137,12 @@ if [[ "$DENIAL_ARCH" == aarch64 ]] && ((DEFAULT_BUILD_JOBS > 10)); then
     DEFAULT_BUILD_JOBS=10
 fi
 BUILD_JOBS="${DENIAL_BUILD_JOBS:-$DEFAULT_BUILD_JOBS}"
+PC_XWAYLAND="${DENIAL_PC_XWAYLAND:-1}"
+COMPOSITOR_FEATURES="flutter"
+COMPOSITOR_DEFAULT_FEATURE_ARGS=()
+if [[ "$PC_XWAYLAND" == 0 ]]; then
+    COMPOSITOR_DEFAULT_FEATURE_ARGS=(--no-default-features)
+fi
 
 usage() {
     cat <<'EOF'
@@ -153,6 +159,7 @@ Commands:
   arch-package      Build an installable Arch Linux package
   debian-package    Build installable Debian-family packages
   fedora-package    Build installable Fedora RPM packages
+  opensuse-package  Build installable openSUSE RPM packages
   alpine-package    Build installable Alpine Linux APK packages
   native-packages   Build Debian-family and Fedora packages from one payload
   flutter-test      Run lock-matched Flutter shell tests; forwards remaining arguments
@@ -186,6 +193,7 @@ Environment:
   DENIAL_FLUTTER_RENDERER
                      Development-session renderer: skia or impeller (default: impeller)
                      DENIA_FLUTTER_RENDERER remains a compatibility alias
+  DENIAL_PC_XWAYLAND  Set to 0 to build and run without Xwayland (default: 1)
 
 The production compositor is deniald and its native client is denialctl. The
 denial-nested binary is a separate visual topology harness and never acquires
@@ -200,6 +208,8 @@ die() {
 
 [[ "$BUILD_JOBS" =~ ^[1-9][0-9]*$ ]] \
     || die "DENIAL_BUILD_JOBS must be a positive integer"
+[[ "$PC_XWAYLAND" == 0 || "$PC_XWAYLAND" == 1 ]] \
+    || die "DENIAL_PC_XWAYLAND must be 0 or 1"
 
 run_pinned_cargo() (
     cd -- "$COMPOSITOR_ROOT"
@@ -726,7 +736,8 @@ build_compositor() {
         --locked \
         --release \
         --jobs "$BUILD_JOBS" \
-        --features flutter \
+        "${COMPOSITOR_DEFAULT_FEATURE_ARGS[@]}" \
+        --features "$COMPOSITOR_FEATURES" \
         --bin deniald \
         --bin denialctl
     run_pinned_cargo build \
@@ -760,6 +771,12 @@ test_compositor() {
         --jobs "$BUILD_JOBS" \
         --no-default-features \
         --features kms \
+        --bin deniald
+    run_pinned_cargo check \
+        --locked \
+        --jobs "$BUILD_JOBS" \
+        --no-default-features \
+        --features flutter \
         --bin deniald
     command -v dbus-run-session >/dev/null 2>&1 \
         || die "dbus-run-session is required for isolated notification service tests"
@@ -824,8 +841,13 @@ run_compositor() {
     [[ -x "$SETTINGS_BINARY" ]] \
         || die "Settings application is not executable: $SETTINGS_BINARY"
     require_file "$OUTPUT_CONFIG"
-    command -v Xwayland >/dev/null 2>&1 \
-        || die "Xwayland is required for X11 applications such as Steam"
+    local -a xwayland_arguments=()
+    if [[ "$PC_XWAYLAND" == 1 ]]; then
+        command -v Xwayland >/dev/null 2>&1 \
+            || die "Xwayland is required for X11 applications such as Steam"
+    else
+        xwayland_arguments=(--no-xwayland)
+    fi
 
     local drm_device
     drm_device="$(resolve_drm_device)"
@@ -854,6 +876,7 @@ run_compositor() {
         --device "$drm_device" \
         --output-config "$OUTPUT_CONFIG" \
         --wayland \
+        "${xwayland_arguments[@]}" \
         --flutter-bundle "$BUNDLE" \
         --flutter-renderer "$flutter_renderer"
 }
@@ -1335,6 +1358,7 @@ case "${1:-}" in
     arch-package) "$ROOT/tools/package-denial-arch" ;;
     debian-package) "$ROOT/tools/package-denial-deb" ;;
     fedora-package) "$ROOT/tools/package-denial-rpm" ;;
+    opensuse-package) "$ROOT/tools/package-denial-opensuse-rpm" ;;
     alpine-package) "$ROOT/tools/package-denial-apk" ;;
     native-packages) "$ROOT/tools/package-denial-native" ;;
     flutter-test)

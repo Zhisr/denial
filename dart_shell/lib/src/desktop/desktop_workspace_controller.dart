@@ -37,19 +37,23 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
   Map<int, Rect> _workAreas = const <int, Rect>{};
   DesktopWindowLayout _windowLayout = DesktopWindowLayout.stacking;
   Set<int> _localFlutterWindowIds = const <int>{};
+  Map<int, int> _transientParentObjectIds = const <int, int>{};
   int _workspaceTransitionSerial = 0;
 
   void syncWorkspaceConfiguration({
     required bool enabled,
     required int count,
     required Iterable<int> monitorIds,
+    Map<int, int> authoritativeActiveWorkspaces = const <int, int>{},
   }) {
     final safeCount = count.clamp(2, 9).toInt();
     final monitors = monitorIds.toSet();
     final active = <int, int>{
       for (final monitorId in monitors)
         monitorId: enabled
-            ? (state.activeWorkspaces[monitorId] ?? 1)
+            ? (authoritativeActiveWorkspaces[monitorId] ??
+                      state.activeWorkspaces[monitorId] ??
+                      1)
                   .clamp(1, safeCount)
                   .toInt()
             : 1,
@@ -171,6 +175,7 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
         ? devicePixelRatio
         : 1.0;
     final pixelRatioChanged = nextPixelRatio != _devicePixelRatio;
+    final windowLayoutChanged = _windowLayout != windowLayout;
     if (identical(windows, _lastSyncedWindows) &&
         snapshotSequence == _lastSyncedSnapshotSequence &&
         !pixelRatioChanged &&
@@ -193,6 +198,12 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
 
     final userWindows = windows.where((window) => window.isUserApp).toList();
     final activeIds = {for (final window in userWindows) window.objectId};
+    _transientParentObjectIds = <int, int>{
+      for (final window in userWindows)
+        if (window.transientParentObjectId case final parentId?)
+          if (parentId != window.objectId && activeIds.contains(parentId))
+            window.objectId: parentId,
+    };
     _moveRemainders.removeWhere((objectId, _) => !activeIds.contains(objectId));
     _pendingFlutterProposedFrames.removeWhere(
       (objectId, _) => !activeIds.contains(objectId),
@@ -248,7 +259,7 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
       );
       final geometryIsNew = snapshotSequence > revisions.geometry;
       final metadataIsNew = snapshotSequence > revisions.metadata;
-      if (geometryIsNew || metadataIsNew) {
+      if (geometryIsNew || metadataIsNew || windowLayoutChanged) {
         var frame = existing.frame;
         var fullscreenRestoreFrame = existing.fullscreenRestoreFrame;
         var monitorId = existing.monitorId;
@@ -289,7 +300,8 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
         // rectangle with the retained live-move delta and visibly apply the
         // motion twice. Placement packets remain the only geometry authority
         // until their end phase commits the final frame.
-        if (geometryIsNew &&
+        if ((geometryIsNew ||
+                (windowLayoutChanged && !window.isLocalFlutter)) &&
             !existing.dragging &&
             !revisions.placementTransactionActive &&
             !existing.layoutPreviewing &&
@@ -478,27 +490,93 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
     if (placement == null) {
       return;
     }
+    final familyRoot = _transientFamilyRoot(objectId);
+    final family = state.placements.values
+        .where(
+          (candidate) =>
+              _transientDepthBelow(candidate.objectId, familyRoot) != null,
+        )
+        .toList(growable: false);
     final topVisibleZ = state.placements.values
         .where((candidate) => !candidate.minimized)
         .fold<int>(0, (top, candidate) => math.max(top, candidate.z));
     if (!state.overviewActive &&
+        family.length == 1 &&
         !placement.minimized &&
         placement.z == topVisibleZ) {
       return;
     }
+
+    // Raise the complete transient family as one unit. Within it, ancestors
+    // remain below their descendants, while the explicitly activated branch
+    // becomes the topmost sibling branch.
+    final orderedFamily = family.toList()
+      ..sort((left, right) {
+        final leftInActivatedBranch =
+            _transientDepthBelow(left.objectId, objectId) != null;
+        final rightInActivatedBranch =
+            _transientDepthBelow(right.objectId, objectId) != null;
+        if (leftInActivatedBranch != rightInActivatedBranch) {
+          return leftInActivatedBranch ? 1 : -1;
+        }
+        final depthOrder = _transientDepthBelow(
+          left.objectId,
+          familyRoot,
+        )!.compareTo(_transientDepthBelow(right.objectId, familyRoot)!);
+        if (depthOrder != 0) {
+          return depthOrder;
+        }
+        final zOrder = left.z.compareTo(right.z);
+        return zOrder != 0 ? zOrder : left.objectId.compareTo(right.objectId);
+      });
+
     final next = Map<int, DesktopWindowPlacement>.of(state.placements);
-    next[objectId] = placement.copyWith(
-      z: state.nextZ,
-      minimized: false,
-      workspaceId: placement.minimized
-          ? state.activeWorkspaceFor(placement.monitorId)
-          : placement.workspaceId,
-    );
+    var nextZ = state.nextZ;
+    for (final member in orderedFamily) {
+      final activated = member.objectId == objectId;
+      next[member.objectId] = member.copyWith(
+        z: nextZ++,
+        minimized: activated ? false : member.minimized,
+        workspaceId: activated && member.minimized
+            ? state.activeWorkspaceFor(member.monitorId)
+            : member.workspaceId,
+      );
+    }
     state = state.copyWith(
       placements: next,
-      nextZ: state.nextZ + 1,
+      nextZ: nextZ,
       clearOverview: state.overviewActive,
     );
+  }
+
+  int _transientFamilyRoot(int objectId) {
+    var current = objectId;
+    final visited = <int>{};
+    while (visited.add(current)) {
+      final parent = _transientParentObjectIds[current];
+      if (parent == null || !state.placements.containsKey(parent)) {
+        return current;
+      }
+      current = parent;
+    }
+    // Malformed cycles are isolated to the activated window rather than
+    // making family traversal or sorting unbounded.
+    return objectId;
+  }
+
+  int? _transientDepthBelow(int objectId, int ancestorId) {
+    var current = objectId;
+    for (var depth = 0; depth <= _transientParentObjectIds.length; depth++) {
+      if (current == ancestorId) {
+        return depth;
+      }
+      final parent = _transientParentObjectIds[current];
+      if (parent == null || parent == current) {
+        return null;
+      }
+      current = parent;
+    }
+    return null;
   }
 
   void toggleOverview({
@@ -1045,12 +1123,34 @@ class DesktopWorkspaceController extends Notifier<DesktopWorkspaceState> {
       return;
     }
     final placement = state.placements[objectId];
-    if (placement == null || placement.fullscreen) {
+    if (placement == null) {
       return;
     }
     _moveRemainders.remove(objectId);
     final next = Map<int, DesktopWindowPlacement>.of(state.placements);
-    if (placement.maximized) {
+    if (placement.fullscreen) {
+      final canvas = Offset.zero & state.viewSize;
+      final requestedBounds = bounds?.intersect(canvas);
+      final maximizedFrame = placement.maximized
+          ? placement.fullscreenRestoreFrame ?? placement.frame
+          : requestedBounds == null || requestedBounds.isEmpty
+          ? _maximizedFrame(placement.monitorId, state.viewSize)
+          : requestedBounds;
+      final normalFrame = placement.maximized
+          ? placement.restoreFrame ?? maximizedFrame
+          : placement.fullscreenRestoreFrame ?? placement.frame;
+      final maximized = placement.copyWith(
+        frame: maximizedFrame,
+        maximized: true,
+        minimized: false,
+        fullscreen: false,
+        dragging: false,
+        restoreFrame: normalFrame,
+        clearFullscreenRestoreFrame: true,
+      );
+      next[objectId] = maximized;
+      _pendingFlutterProposedFrames[objectId] = maximized.frame;
+    } else if (placement.maximized) {
       final restored = placement.copyWith(
         frame: _clampFrame(
           placement.restoreFrame ?? placement.frame,

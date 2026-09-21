@@ -579,6 +579,7 @@ void main() {
             serverSideDecorated: false,
             opacity: 0.75,
             opacityClass: WindowOpacityClass.BorderAlphaOnly,
+            transientParentId: 99,
           ),
         ],
       ),
@@ -590,6 +591,7 @@ void main() {
     final windows = codec.decodeWindows(decoded!.payload as WindowSnapshot);
     expect(windows, hasLength(1));
     expect(windows!.single.suppressAnimations, isTrue);
+    expect(windows.single.transientParentObjectId, 99);
     expect(windows.single.serverSideDecorated, isFalse);
     expect(windows.single.opacity, closeTo(0.75, 0.0001));
     expect(windows.single.surfaceLayers.single.opacity, closeTo(0.5, 0.0001));

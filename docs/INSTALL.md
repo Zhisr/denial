@@ -4,8 +4,9 @@ Denial publishes signed first-party x86-64 repositories for Arch Linux and
 CachyOS, Debian 13 (trixie), Ubuntu 24.04 LTS (noble), and Fedora 44. Alpine
 Linux 3.24 receives signed direct APK downloads from each GitHub Release;
 NixOS 26.05 has a first-party source flake and module, and Void Linux is
-runtime-tested without a first-party package. Every published binary package
-set uses the permanent release-key fingerprint:
+runtime-tested without a first-party package. openSUSE Tumbleweed has a native
+local RPM adapter but no published package lane yet. Every published binary
+package set uses the permanent release-key fingerprint:
 
 ```text
 AE4108FA5E91E26BE0EE331E0F5B3AD16E023091
@@ -52,6 +53,14 @@ sudo apt update && sudo apt install denial
 ```sh
 sudo dnf install denial
 ```
+
+### openSUSE Tumbleweed
+
+openSUSE currently has a source-to-local-RPM adapter rather than a published
+Zypper repository or GitHub Release binary. Build the package pair with
+`tools/denial-pc opensuse-package`, then install both local RPMs together.
+See the [openSUSE package guide](../packaging/opensuse/README.md) for the build
+requirements, output path, and command.
 
 ### Alpine Linux 3.24
 

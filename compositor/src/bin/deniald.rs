@@ -134,9 +134,12 @@ mod x11_input_method;
 #[cfg(feature = "flutter")]
 #[path = "deniald/xcursor_sentinel.rs"]
 mod xcursor_sentinel;
-#[cfg(feature = "flutter")]
+#[cfg(all(feature = "flutter", feature = "xwayland"))]
 #[path = "deniald/xembed_tray.rs"]
 mod xembed_tray;
+#[cfg(feature = "flutter")]
+#[path = "deniald/xembed_tray_protocol.rs"]
+mod xembed_tray_protocol;
 
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::error::Error;

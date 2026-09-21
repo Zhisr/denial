@@ -26,6 +26,7 @@ use serde_json::{Value, json};
 use smithay::reexports::calloop::channel::{Channel, SyncSender, sync_channel};
 use tracing::{info, warn};
 
+use super::output_topology::ScrollingLayoutAxis;
 use super::ui_development::{
     CommandKind as UiDevelopmentCommandKind, UiDevelopmentCommand, UiDevelopmentState,
 };
@@ -59,6 +60,7 @@ pub(super) struct OutputControlCapabilities {
     pub(super) mode: bool,
     pub(super) scale: bool,
     pub(super) transform: bool,
+    pub(super) scrolling_layout_axis: bool,
     pub(super) adaptive_sync: bool,
     pub(super) dpms: bool,
     pub(super) mirror: bool,
@@ -75,6 +77,7 @@ impl Default for OutputControlCapabilities {
             mode: true,
             scale: true,
             transform: true,
+            scrolling_layout_axis: true,
             adaptive_sync: true,
             dpms: true,
             mirror: false,
@@ -135,6 +138,7 @@ pub(super) struct OutputControlOutput {
     pub(super) physical_height_mm: Option<u32>,
     pub(super) scale: f64,
     pub(super) transform: OutputTransformName,
+    pub(super) scrolling_layout_axis: ScrollingLayoutAxis,
     pub(super) adaptive_sync_supported: bool,
     pub(super) adaptive_sync: bool,
     pub(super) current_mode: Option<OutputControlMode>,
@@ -389,6 +393,8 @@ pub(super) struct RequestedOutput {
     pub(super) mode: RequestedOutputMode,
     pub(super) scale: f64,
     pub(super) transform: OutputTransformName,
+    #[serde(default)]
+    pub(super) scrolling_layout_axis: Option<ScrollingLayoutAxis>,
     pub(super) adaptive_sync: bool,
 }
 

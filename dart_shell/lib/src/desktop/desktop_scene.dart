@@ -452,7 +452,7 @@ class _DesktopScene extends ConsumerStatefulWidget {
     required this.panelDurationScale,
     required this.windowSwitcher,
     required this.displayLayout,
-    required this.frameTimingOptions,
+    required this.showFrameTimingOverlay,
     required this.wallpaperSelectorVisible,
     required this.shellOutputRect,
     required this.mainOutputRect,
@@ -490,7 +490,7 @@ class _DesktopScene extends ConsumerStatefulWidget {
   final double panelDurationScale;
   final DesktopWindowSwitcherState? windowSwitcher;
   final DisplayLayout? displayLayout;
-  final ShellFrameTimingOptions frameTimingOptions;
+  final bool showFrameTimingOverlay;
   final bool wallpaperSelectorVisible;
   final Rect? shellOutputRect;
   final Rect? mainOutputRect;
@@ -788,7 +788,7 @@ class _DesktopSceneState extends ConsumerState<_DesktopScene> {
     final windowSwitcher = widget.windowSwitcher;
     final displayLayout = widget.displayLayout;
     final minimizedWindowPlacement = widget.minimizedWindowPlacement;
-    final frameTimingOptions = widget.frameTimingOptions;
+    final showFrameTimingOverlay = widget.showFrameTimingOverlay;
     final wallpaperSelectorVisible = widget.wallpaperSelectorVisible;
     final shellOutputRect = widget.shellOutputRect;
     final mainOutputRect = widget.mainOutputRect;
@@ -1050,15 +1050,11 @@ class _DesktopSceneState extends ConsumerState<_DesktopScene> {
                           ),
                         ),
                       ),
-                  if (frameTimingOptions.showOverlay)
-                    Positioned(
+                  if (showFrameTimingOverlay)
+                    const Positioned(
                       top: 12,
                       right: 12,
-                      child: ShellFrameTimingOverlayStack(
-                        windows: windows,
-                        showImportedTextureCharts:
-                            frameTimingOptions.showImportedTextureCharts,
-                      ),
+                      child: ShellFrameTimeOverlay(),
                     ),
                 ],
               ),
