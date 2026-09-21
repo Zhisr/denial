@@ -128,6 +128,15 @@ impl CaptureTarget {
             CaptureTargetKind::Toplevel(toplevel) => Some(toplevel),
         }
     }
+
+    fn into_native_output_buffer(mut self) -> Self {
+        let transform = self.transform;
+        self.source = transform.transform_rect_in(self.source, &self.output_size);
+        self.size = transform.transform_size(self.size);
+        self.output_size = transform.transform_size(self.output_size);
+        self.transform = Transform::Normal;
+        self
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -903,6 +912,30 @@ mod capture_rotation_tests {
             Some(Rectangle::from_size((2560, 1440).into()))
         );
     }
+
+    #[test]
+    fn legacy_capture_preserves_native_output_orientation() {
+        let target = project_capture_region(
+            OutputId(7),
+            Rectangle::from_size((1440, 2560).into()),
+            (1440, 2560).into(),
+            (1440, 2560).into(),
+            None,
+            Transform::_90,
+            false,
+        )
+        .expect("valid capture target")
+        .into_native_output_buffer();
+
+        assert_eq!(target.transform, Transform::Normal);
+        assert_eq!(target.source, Rectangle::from_size((2560, 1440).into()));
+        assert_eq!(target.size, Size::from((2560, 1440)));
+        assert_eq!(target.output_size, Size::from((2560, 1440)));
+        assert_eq!(
+            capture_source_rect(target, (2560, 1440).into()),
+            Some(Rectangle::from_size((2560, 1440).into()))
+        );
+    }
 }
 
 fn copy_to_dmabuf(
@@ -1105,6 +1138,7 @@ impl WaylandFrontend {
     ) -> Option<CaptureTarget> {
         let output = Output::from_resource(output)?;
         self.capture_target_for_output(&output, requested, overlay_cursor)
+            .map(CaptureTarget::into_native_output_buffer)
     }
 
     fn image_copy_target(

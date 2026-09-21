@@ -18,10 +18,12 @@ republished when the toplevel size or effective output scale changes, and an
 unmapped toplevel closes its foreign handle and stops its capture sessions.
 
 Denial reconstructs the capture atlas in logical desktop orientation. Native
-scanout buffers are sampled with their `wl_output.transform` exactly once, and
-the resulting capture buffers advertise normal orientation. The built-in
-region selector and direct screencopy clients therefore receive the same
-upright pixels for normal, rotated, and reflected outputs.
+scanout buffers are sampled with their `wl_output.transform` exactly once.
+`ext-image-copy-capture-v1` buffers advertise normal orientation, while legacy
+`zwlr-screencopy-unstable-v1` buffers retain the output's native pixel axes as
+required by clients that combine the frame with `wl_output.transform`. The
+built-in region selector and direct capture clients therefore both produce
+upright results for normal, rotated, and reflected outputs.
 
 ## Direct capture
 
