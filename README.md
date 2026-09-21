@@ -88,7 +88,9 @@ finishes, install Denial with the command for your distribution:
 Alpine Linux 3.24 has [signed APK downloads](docs/INSTALL.md#alpine-linux-324).
 NixOS has a [first-party source flake and module](packaging/nixos/README.md).
 ARM64 builds are supported [from source](docs/BUILDING.md); Void Linux has also
-been tested, with no first-party binary yet.
+been tested, with no first-party binary yet. openSUSE Tumbleweed has a
+[native local RPM adapter](packaging/opensuse/README.md); publication is not
+connected yet.
 
 After installing, choose **Denial** from your display manager's session menu.
 

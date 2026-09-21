@@ -956,6 +956,7 @@ source_audit() {
     "$ROOT/tools/package-denial-apk" \
     "$ROOT/tools/package-denial-deb" \
     "$ROOT/tools/package-denial-native" \
+    "$ROOT/tools/package-denial-opensuse-rpm" \
     "$ROOT/tools/package-denial-rpm" \
     "$ROOT/tools/prepare-denial-apk-promotion-host" \
     "$ROOT/tools/promote-denial-arch-candidate" \

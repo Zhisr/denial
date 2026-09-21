@@ -244,7 +244,7 @@ The validator reports the compressed and installed sizes and enforces explicit
 budgets so accidental package growth fails before publication. See
 [Live Flutter UI development](UI_DEVELOPMENT.md).
 
-## Debian and Fedora package adapters
+## Debian, Fedora, and openSUSE package adapters
 
 Build both native package families from one compiled and ABI-gated payload:
 
@@ -252,16 +252,24 @@ Build both native package families from one compiled and ABI-gated payload:
 tools/denial-pc native-packages
 ```
 
-`debian-package` and `fedora-package` build either family independently. The
-shared staging pass rejects any ELF input requiring a glibc version newer than
-2.39, the Ubuntu 24.04 baseline, and records deterministic file inventories
-and hashes. Both adapters disable package-time ELF rewriting, extract their
-finished archives, and require every installed payload byte and mode to match
-that shared tree. Target distributions are required for clean installation
-and graphical-session validation, not for compilation or package assembly.
-The builder needs `dpkg-deb` for `.deb` output and `rpmbuild`, `rpm`,
+`debian-package` and `fedora-package` build either release family
+independently. Build the openSUSE adapter separately with:
+
+```sh
+tools/denial-pc opensuse-package
+```
+
+The shared staging pass rejects any ELF input requiring a glibc version newer
+than 2.39, the Ubuntu 24.04 baseline, and records deterministic file
+inventories and hashes. Every adapter disables package-time ELF rewriting,
+extracts its finished archives, and requires every installed payload byte and
+mode to match that shared tree. Target distributions are required for clean
+installation and graphical-session validation, not for compilation or package
+assembly. The builder needs `dpkg-deb` for `.deb` output and `rpmbuild`, `rpm`,
 `rpm2cpio`, and `bsdtar` for RPM output. Finished packages are written below
-`$XDG_CACHE_HOME/denial/pc-build/packages/` by default.
+`$XDG_CACHE_HOME/denial/pc-build/packages/` by default; openSUSE RPMs use its
+`opensuse/` child because their dependency metadata intentionally differs from
+the Fedora RPMs with the same payload version.
 
 ## Local session
 

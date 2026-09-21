@@ -159,6 +159,7 @@ Commands:
   arch-package      Build an installable Arch Linux package
   debian-package    Build installable Debian-family packages
   fedora-package    Build installable Fedora RPM packages
+  opensuse-package  Build installable openSUSE RPM packages
   alpine-package    Build installable Alpine Linux APK packages
   native-packages   Build Debian-family and Fedora packages from one payload
   flutter-test      Run lock-matched Flutter shell tests; forwards remaining arguments
@@ -1357,6 +1358,7 @@ case "${1:-}" in
     arch-package) "$ROOT/tools/package-denial-arch" ;;
     debian-package) "$ROOT/tools/package-denial-deb" ;;
     fedora-package) "$ROOT/tools/package-denial-rpm" ;;
+    opensuse-package) "$ROOT/tools/package-denial-opensuse-rpm" ;;
     alpine-package) "$ROOT/tools/package-denial-apk" ;;
     native-packages) "$ROOT/tools/package-denial-native" ;;
     flutter-test)
