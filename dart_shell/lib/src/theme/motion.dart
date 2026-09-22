@@ -32,6 +32,19 @@ class Motion {
   static const Duration inputMethodPopup = Duration(milliseconds: 180);
   static const Duration pill = Duration(milliseconds: 90);
   static const Duration cardSettle = Duration(milliseconds: 220);
+
+  /// Base period for one revolution of the media ticker's orbital glyph.
+  /// Each ring scales this with its own whole-number angular velocity so the
+  /// repeating controller loops seamlessly. Placeholder until the spin is
+  /// driven by live audio levels.
+  static const Duration orbitalDiscSpin = Duration(seconds: 6);
+
+  /// How long each line stays on screen in the media ticker before the next
+  /// one cross-fades in.
+  static const Duration lyricsRotation = Duration(seconds: 4);
+
+  /// Cross-fade between two media ticker lines.
+  static const Duration lyricsCrossFade = Duration(milliseconds: 420);
   static const Duration wallpaperSelector = Duration(milliseconds: 360);
   static const Duration wallpaperTilesFade = Duration(milliseconds: 300);
   static const Duration wallpaperReveal = Duration(milliseconds: 720);

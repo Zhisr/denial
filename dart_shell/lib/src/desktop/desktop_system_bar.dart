@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -26,6 +27,7 @@ import 'desktop_workspace.dart';
 
 part 'desktop_system_bar_components.dart';
 part 'desktop_system_bar_media.dart';
+part 'desktop_system_bar_starmedia.dart';
 part 'desktop_workspace_indicator.dart';
 
 /// The desktop system bar. Its strip is reserved from the window work area,
@@ -108,7 +110,7 @@ class DesktopSystemBar extends ConsumerWidget {
                   : const EdgeInsets.only(bottom: _cardGap),
               child: _SystemBarCard(
                 accent: accent,
-                child: _MediaStatusProviderModule(accent: accent, side: side),
+                child: _MyMediaStatusModule(accent: accent, side: side),
               ),
             ),
           ),
