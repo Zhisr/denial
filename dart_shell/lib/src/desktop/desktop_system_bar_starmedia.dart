@@ -6,8 +6,8 @@ part of 'desktop_system_bar.dart';
 /// alignment and state distribution, and composes [_OrbitalDiscGlyph],
 /// [_MaskedLyricsTicker] and [_LuminescentText]. The system bar supplies the
 /// shared [_SystemBarCard] shell (wallpaper accent + frosted glass) around it.
-class _MyMediaStatusModule extends ConsumerStatefulWidget {
-  const _MyMediaStatusModule({
+class _StarMediaTickerModule extends ConsumerStatefulWidget {
+  const _StarMediaTickerModule({
     required this.accent,
     required this.side,
     super.key,
@@ -17,35 +17,68 @@ class _MyMediaStatusModule extends ConsumerStatefulWidget {
   final SystemBarSide side;
 
   @override
-  ConsumerState<_MyMediaStatusModule> createState() =>
-      _MyMediaStatusModuleState();
+  ConsumerState<_StarMediaTickerModule> createState() =>
+      _StarMediaTickerModuleState();
 }
 
-class _MyMediaStatusModuleState extends ConsumerState<_MyMediaStatusModule> {
+/// The fields the ticker actually renders, projected out of the playback
+/// stream so progress-only updates do not rebuild the bar.
+typedef _MediaTickerSummary = ({
+  bool available,
+  bool playing,
+  String title,
+  String artists,
+  String album,
+});
+
+class _StarMediaTickerModuleState
+    extends ConsumerState<_StarMediaTickerModule> {
+  static const double _minWidth = 64;
+  static const double _maxWidth = 128;
+
   @override
   Widget build(BuildContext context) {
     final accent = context.shellTheme.accent;
-    final playback = ref.watch(mediaPlaybackProvider).value;
-    final playing = playback?.playing ?? false;
+    final summary = ref.watch(
+      mediaPlaybackProvider.select((media) {
+        final playback = media.value;
+        return (
+          available: playback?.available ?? false,
+          playing: playback?.playing ?? false,
+          title: playback?.title ?? '',
+          artists: playback?.artistLabel ?? '',
+          album: playback?.album ?? '',
+        );
+      }),
+    );
+    // Bar-text convention: a tight line box with even leading keeps the
+    // glyphs optically centred instead of low in the font's ascent/descent
+    // box.
+    final style = ShellText.base.copyWith(
+      fontSize: 12,
+      fontWeight: FontWeight.w600,
+      height: -0.15,
+      leadingDistribution: TextLeadingDistribution.even,
+    );
+    final lines = _mediaTickerLines(summary, context.l10n.mediaNowPlaying);
+    final width = _measureTickerWidth(
+      lines,
+      style,
+    ).clamp(_minWidth, _maxWidth).toDouble();
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _OrbitalDiscGlyph(accent: accent, size: 20, playing: playing),
+        _OrbitalDiscGlyph(accent: accent, size: 20, playing: summary.playing),
         const SizedBox(width: 8),
-        SizedBox(
-          width: 96,
+        AnimatedContainer(
+          duration: reduceMotion ? Duration.zero : Motion.cardSettle,
+          curve: Motion.standard,
+          width: width,
           child: _MaskedLyricsTicker(
-            lines: _mediaTickerLines(playback, context.l10n.mediaNowPlaying),
-            playing: playing,
-            style: ShellText.base.copyWith(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              // Bar-text convention: a tight line box with even leading keeps
-              // the glyphs optically centred instead of low in the
-              // font's ascent/descent box.
-              height: -0.15,
-              leadingDistribution: TextLeadingDistribution.even,
-            ),
+            lines: lines,
+            playing: summary.playing,
+            style: style,
             color: const Color.fromARGB(255, 230, 226, 222),
             edgeFade: 0.4,
           ),
@@ -57,16 +90,36 @@ class _MyMediaStatusModuleState extends ConsumerState<_MyMediaStatusModule> {
 
 /// The rotating media ticker lines: title, then artists, then album. Falls back
 /// to [fallback] when nothing is available.
-List<String> _mediaTickerLines(MprisPlaybackState? playback, String fallback) {
-  if (playback == null || !playback.available) {
+List<String> _mediaTickerLines(_MediaTickerSummary summary, String fallback) {
+  if (!summary.available) {
     return <String>[fallback];
   }
   final lines = <String>[
-    if (playback.title.isNotEmpty) playback.title,
-    if (playback.artists.isNotEmpty) playback.artists.join(', '),
-    if (playback.album.isNotEmpty) playback.album,
+    if (summary.title.isNotEmpty) summary.title,
+    if (summary.artists.isNotEmpty) summary.artists,
+    if (summary.album.isNotEmpty) summary.album,
   ];
   return lines.isEmpty ? <String>[fallback] : lines;
+}
+
+/// Measures the widest of [lines] at [style] so the ticker box can track the
+/// current track's metadata instead of a fixed width. All lines rotate through
+/// the same box, so the maximum is the width that never truncates a shorter
+/// line's siblings.
+double _measureTickerWidth(List<String> lines, TextStyle style) {
+  var maxWidth = 0.0;
+  for (final line in lines) {
+    final painter = TextPainter(
+      text: TextSpan(text: line, style: style),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout();
+    if (painter.width > maxWidth) {
+      maxWidth = painter.width;
+    }
+    painter.dispose();
+  }
+  return maxWidth;
 }
 
 /// Dynamically rotating concentric-ring / orbital decoration glyph.
@@ -146,9 +199,10 @@ class _OrbitalDiscGlyphState extends State<_OrbitalDiscGlyph>
 
 /// Backing painter for [_OrbitalDiscGlyph].
 ///
-/// Draws one centred reference circle, then three concentric orbital arcs.
-/// Each arc spans a quarter turn and orbits the centre at its own angular
-/// velocity from [ringSpeeds].
+/// Draws a translucent base disc for visual weight, then one centred
+/// reference circle, then three concentric orbital arcs on top. Each arc
+/// spans a quarter turn and orbits the centre at its own angular velocity
+/// from [ringSpeeds].
 class _OrbitalDiscPainter extends CustomPainter {
   const _OrbitalDiscPainter({
     required this.accent,
@@ -180,7 +234,16 @@ class _OrbitalDiscPainter extends CustomPainter {
       return;
     }
 
-    // 1. The centred reference circle.
+    // 1. The translucent base disc. A fill has no stroke, so extend past
+    //    [radius] by a quarter strokeWidth to align with the outer edge of
+    //    the arc strokes centred on [radius].
+    canvas.drawCircle(
+      center,
+      radius + strokeWidth / 4,
+      Paint()..color = accent.withValues(alpha: 0.25),
+    );
+
+    // 2. The centred reference circle.
     canvas.drawCircle(
       center,
       radius * 17 / 80,
@@ -190,7 +253,7 @@ class _OrbitalDiscPainter extends CustomPainter {
         ..strokeWidth = strokeWidth * 0.5,
     );
 
-    // 2. Three concentric orbital arcs, each orbiting the centre at its own
+    // 3. Three concentric orbital arcs, each orbiting the centre at its own
     //    angular velocity.
     const baseAngle = -math.pi / 4;
     const sweepAngle = math.pi / 2; // ends at +pi / 4
@@ -478,7 +541,6 @@ class _LuminescentTextState extends State<_LuminescentText> {
       text: TextSpan(text: widget.text, style: style),
       textDirection: TextDirection.ltr,
       maxLines: 1,
-      ellipsis: '…',
     );
   }
 

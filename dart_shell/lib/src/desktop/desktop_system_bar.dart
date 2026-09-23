@@ -110,7 +110,7 @@ class DesktopSystemBar extends ConsumerWidget {
                   : const EdgeInsets.only(bottom: _cardGap),
               child: _SystemBarCard(
                 accent: accent,
-                child: _MyMediaStatusModule(accent: accent, side: side),
+                child: _StarMediaTickerModule(accent: accent, side: side),
               ),
             ),
           ),
